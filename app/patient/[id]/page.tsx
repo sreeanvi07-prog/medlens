@@ -30,6 +30,10 @@ import { AIAnalysisSummary } from "@/components/AIAnalysisSummary";
 import { SafetyBanner } from "@/components/SafetyBanner";
 import { DocumentUpload } from "@/components/DocumentUpload";
 import { ConflictViewer } from "@/components/ConflictViewer";
+import { WorkflowPipeline } from "@/components/WorkflowPipeline";
+import { LongitudinalComparison } from "@/components/LongitudinalComparison";
+import { ClarificationQuestions } from "@/components/ClarificationQuestions";
+import { generateClarificationQuestions } from "@/lib/clarificationQuestionsEngine";
 
 export default function PatientRecordPage() {
   const params = useParams();
@@ -62,6 +66,12 @@ export default function PatientRecordPage() {
       return false;
     });
   }, [conflicts, patient]);
+
+  // Clarification questions generated deterministically from record gaps
+  const clarificationQuestions = useMemo(() => {
+    if (!patient) return [];
+    return generateClarificationQuestions(patient, documents, allResults, patientConflicts);
+  }, [patient, documents, allResults, patientConflicts]);
 
   // Copy patient ID to clipboard
   const handleCopyId = () => {
@@ -170,6 +180,9 @@ export default function PatientRecordPage() {
           </button>
         </div>
       </div>
+
+      {/* 0. OFFICIAL WORKFLOW PIPELINE INDICATOR */}
+      <WorkflowPipeline currentStage="review" />
 
       {/* 1. TOP AI SUMMARY CARD (Tagged 🤖 AI Generated - Purple) */}
       <AIAnalysisSummary
@@ -366,6 +379,9 @@ export default function PatientRecordPage() {
         </div>
       )}
 
+      {/* 4b. CLARIFICATION QUESTIONS FOR RECORD GAPS */}
+      <ClarificationQuestions questions={clarificationQuestions} />
+
       {/* 5. SOURCE DOCUMENTS CAROUSEL / FILTER STRIP */}
       <div className="space-y-3">
         <div className="flex items-center justify-between">
@@ -545,6 +561,9 @@ export default function PatientRecordPage() {
           filterDocumentId={selectedDocId === "all" ? undefined : selectedDocId}
         />
       </div>
+
+      {/* 7. LONGITUDINAL PARAMETER COMPARISON ENGINE */}
+      <LongitudinalComparison documents={documents} testResults={allResults} />
     </div>
   );
 }

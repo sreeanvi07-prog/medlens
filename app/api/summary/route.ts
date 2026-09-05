@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { Patient, Document, TestResult } from "@/lib/types";
+import {
+  isMedicalAdviceRequest,
+  SAFETY_REFUSAL_RESPONSE,
+} from "@/lib/safetyGuardrails";
 
 /**
  * EXACT MANDATED SYSTEM PROMPT FOR SUMMARY:
@@ -24,24 +28,6 @@ Rules you must always follow:
 Respond in 3-5 short sentences plus a bulleted stat list (reports processed, test
 results extracted, results outside reference range, items needing verification).`;
 
-const GUARDRAIL_BLOCKED_MESSAGE =
-  "MedLens is designed to organize and explain the information in your records. It cannot diagnose conditions, prescribe medication, or recommend dosage changes.";
-
-const DIAGNOSTIC_TRIGGER_WORDS = [
-  "diagnose",
-  "diagnosis",
-  "should i take",
-  "what medicine",
-  "what medication",
-  "dosage",
-  "dose",
-  "do i have",
-  "can you treat",
-  "cure",
-  "prescribe",
-  "prescription",
-];
-
 const REQUIRED_DISCLAIMER_ENDING =
   "MedLens organizes and explains information from your records. It does not provide a medical diagnosis or treatment recommendation.";
 
@@ -60,17 +46,12 @@ export async function POST(request: Request) {
       query?: string;
     } = body;
 
-    // Hardcoded server-side safety check
-    const queryLower = (query || "").toLowerCase();
-    const isBlocked = DIAGNOSTIC_TRIGGER_WORDS.some((word) =>
-      queryLower.includes(word)
-    );
-
-    if (isBlocked) {
+    // Hardcoded server-side safety check using shared single source of truth
+    if (query && isMedicalAdviceRequest(query)) {
       return NextResponse.json({
         type: "guardrail_blocked",
         is_blocked_diagnostic_query: true,
-        summary: GUARDRAIL_BLOCKED_MESSAGE,
+        summary: SAFETY_REFUSAL_RESPONSE,
         provenance: "ai_generated",
       });
     }

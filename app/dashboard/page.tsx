@@ -45,6 +45,25 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-8 pb-12">
+      {/* Demo Access Prototype Banner */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-4 py-2.5 rounded-xl bg-slate-900/90 border border-slate-800 text-xs text-slate-300 shadow-sm">
+        <div className="flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-teal-400 animate-pulse" />
+          <span className="font-semibold text-white">
+            {user.role === "evaluator"
+              ? "Synthetic Demo Workspace Active"
+              : "Demo Access Workspace"}
+          </span>
+          <span className="text-slate-500 hidden sm:inline">•</span>
+          <span className="text-slate-400 hidden sm:inline">
+            Signed in as <strong className="text-slate-200">{user.displayName}</strong> ({user.role})
+          </span>
+        </div>
+        <span className="text-[11px] text-amber-400/90 font-medium bg-amber-950/40 px-2.5 py-0.5 rounded-lg border border-amber-900/50 self-start sm:self-auto">
+          Hackathon Prototype — Synthetic Data Only
+        </span>
+      </div>
+
       {/* Top Banner / Safety Guardrail */}
       <SafetyBanner />
 

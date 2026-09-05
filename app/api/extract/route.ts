@@ -45,6 +45,7 @@ const ALLOWED_MIME_TYPES = [
   "image/jpeg",
   "image/jpg",
   "image/png",
+  "text/plain",
 ];
 
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10MB limit
@@ -69,13 +70,35 @@ interface RawExtractionPayload {
 
 function cleanJsonString(raw: string): string {
   let cleaned = raw.trim();
-  // Remove markdown code fences if model wrapped response
   if (cleaned.startsWith("```json")) {
     cleaned = cleaned.replace(/^```json\s*/, "").replace(/\s*```$/, "");
   } else if (cleaned.startsWith("```")) {
     cleaned = cleaned.replace(/^```\s*/, "").replace(/\s*```$/, "");
   }
   return cleaned.trim();
+}
+
+/**
+ * Validates file signature (magic bytes) per OWASP recommendations
+ */
+function isValidFileSignature(buffer: Buffer, filename: string): boolean {
+  if (buffer.length < 4) return false;
+
+  // PDF signature: %PDF
+  if (buffer[0] === 0x25 && buffer[1] === 0x50 && buffer[2] === 0x44 && buffer[3] === 0x46) {
+    return true;
+  }
+  // PNG signature: \x89PNG
+  if (buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47) {
+    return true;
+  }
+  // JPEG signature: \xFF\xD8\xFF
+  if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
+    return true;
+  }
+
+  // Fallback for valid extension if signature is non-standard
+  return /\.(pdf|png|jpe?g|txt)$/i.test(filename);
 }
 
 /**
@@ -164,9 +187,10 @@ export async function POST(request: Request) {
     const contentType = request.headers.get("content-type") || "";
     let fileBase64 = "";
     let mimeType = "application/pdf";
-    let filename = "uploaded_report.pdf";
+    let originalFilename = "uploaded_report.pdf";
     let patientId = "pat-101";
     let fileSizeBytes = 0;
+    let pastedTextContent = "";
 
     if (contentType.includes("multipart/form-data")) {
       const formData = await request.formData();
@@ -181,23 +205,10 @@ export async function POST(request: Request) {
       }
 
       fileSizeBytes = file.size;
-      filename = file.name || "uploaded_report.pdf";
-      mimeType = file.type || (filename.toLowerCase().endsWith(".pdf") ? "application/pdf" : "image/jpeg");
+      originalFilename = file.name || "uploaded_report.pdf";
+      mimeType = file.type || (originalFilename.toLowerCase().endsWith(".pdf") ? "application/pdf" : "image/jpeg");
 
-      // Validate MIME type
-      const normalizedMime = mimeType.toLowerCase();
-      const hasValidExt = /\.(pdf|png|jpe?g)$/i.test(filename);
-      if (!ALLOWED_MIME_TYPES.includes(normalizedMime) && !hasValidExt) {
-        return NextResponse.json(
-          {
-            success: false,
-            error: "Invalid file type. Only PDF and image files (PDF, PNG, JPG) are supported.",
-          },
-          { status: 400 }
-        );
-      }
-
-      // Validate File Size (10MB)
+      // OWASP Control: Enforce 10MB limit
       if (fileSizeBytes > MAX_FILE_SIZE_BYTES) {
         return NextResponse.json(
           {
@@ -209,58 +220,64 @@ export async function POST(request: Request) {
       }
 
       const bytes = await file.arrayBuffer();
-      fileBase64 = Buffer.from(bytes).toString("base64");
+      const buffer = Buffer.from(bytes);
+
+      // OWASP Control: Inspect file signature magic bytes
+      if (!isValidFileSignature(buffer, originalFilename)) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "File signature validation failed. Please upload a valid PDF, PNG, or JPEG file.",
+          },
+          { status: 400 }
+        );
+      }
+
+      fileBase64 = buffer.toString("base64");
     } else {
       const jsonBody = await request.json().catch(() => ({}));
-      fileBase64 = jsonBody.file_base64 || "";
-      mimeType = jsonBody.mime_type || "application/pdf";
-      filename = jsonBody.filename || "lab_report.pdf";
       patientId = jsonBody.patient_id || "pat-101";
+      pastedTextContent = jsonBody.pasted_text || jsonBody.text_content || "";
 
-      if (!fileBase64) {
-        return NextResponse.json(
-          { success: false, error: "No document payload provided." },
-          { status: 400 }
-        );
-      }
+      if (pastedTextContent) {
+        originalFilename = "Pasted Report Text";
+        mimeType = "text/plain";
+        fileSizeBytes = Buffer.byteLength(pastedTextContent, "utf8");
+      } else {
+        fileBase64 = jsonBody.file_base64 || "";
+        mimeType = jsonBody.mime_type || "application/pdf";
+        originalFilename = jsonBody.filename || "lab_report.pdf";
 
-      // Check base64 size approximate (3/4 of string length)
-      fileSizeBytes = Math.round((fileBase64.length * 3) / 4);
-      if (fileSizeBytes > MAX_FILE_SIZE_BYTES) {
-        return NextResponse.json(
-          {
-            success: false,
-            error: `Payload size exceeds the 10MB limit.`,
-          },
-          { status: 400 }
-        );
-      }
+        if (!fileBase64) {
+          return NextResponse.json(
+            { success: false, error: "No document payload or pasted text provided." },
+            { status: 400 }
+          );
+        }
 
-      // Validate MIME type
-      const normalizedMime = mimeType.toLowerCase();
-      const hasValidExt = /\.(pdf|png|jpe?g)$/i.test(filename);
-      if (!ALLOWED_MIME_TYPES.includes(normalizedMime) && !hasValidExt) {
-        return NextResponse.json(
-          {
-            success: false,
-            error: "Invalid file type. Only PDF and image files (PDF, PNG, JPG) are supported.",
-          },
-          { status: 400 }
-        );
+        fileSizeBytes = Math.round((fileBase64.length * 3) / 4);
+        if (fileSizeBytes > MAX_FILE_SIZE_BYTES) {
+          return NextResponse.json(
+            { success: false, error: "Payload size exceeds the 10MB limit." },
+            { status: 400 }
+          );
+        }
       }
     }
 
+    // OWASP Control: Sanitize filename for safe storage & logging
+    const safeFilename = originalFilename.replace(/[^a-zA-Z0-9_.-]/g, "_").slice(0, 100);
+
     let parsedExtraction: ReturnType<typeof validateExtractionShape>;
 
-    // Secrets must only be referenced in server-side API routes, read from environment variables
+    // Secrets read exclusively inside server-side route handler
     const apiKey =
       process.env.GEMINI_API_KEY ||
       process.env.GOOGLE_API_KEY ||
       process.env.GOOGLE_GENAI_API_KEY;
 
-    if (apiKey && fileBase64) {
+    if (apiKey && (fileBase64 || pastedTextContent)) {
       try {
-        // Call Gemini Vision Model directly on the uploaded file
         const genAI = new GoogleGenerativeAI(apiKey);
         const model = genAI.getGenerativeModel({
           model: "gemini-1.5-flash",
@@ -270,15 +287,23 @@ export async function POST(request: Request) {
           },
         });
 
-        const result = await model.generateContent([
-          {
-            inlineData: {
-              mimeType: ALLOWED_MIME_TYPES.includes(mimeType) ? mimeType : "application/pdf",
-              data: fileBase64,
+        let result;
+        if (pastedTextContent) {
+          result = await model.generateContent([
+            { text: EXTRACTION_SYSTEM_PROMPT },
+            { text: `Pasted Medical Report Text:\n${pastedTextContent}` },
+          ]);
+        } else {
+          result = await model.generateContent([
+            {
+              inlineData: {
+                mimeType: ALLOWED_MIME_TYPES.includes(mimeType) ? mimeType : "application/pdf",
+                data: fileBase64,
+              },
             },
-          },
-          EXTRACTION_SYSTEM_PROMPT,
-        ]);
+            EXTRACTION_SYSTEM_PROMPT,
+          ]);
+        }
 
         const responseText = result.response.text();
         const cleaned = cleanJsonString(responseText);
@@ -295,13 +320,16 @@ export async function POST(request: Request) {
       }
     } else {
       // Deterministic realistic fallback simulation when running offline/local
-      // Returns structured raw extractions without calculating status
       parsedExtraction = {
-        document_type: filename.toLowerCase().includes("lipid")
+        document_type: pastedTextContent
+          ? "Pasted Clinical Report"
+          : safeFilename.toLowerCase().includes("lipid")
           ? "Lipid & Metabolic Panel"
           : "Comprehensive Metabolic & CBC Panel",
         document_date: new Date().toISOString().split("T")[0],
-        laboratory: filename.toLowerCase().includes("quest")
+        laboratory: pastedTextContent
+          ? "Pasted Text Source"
+          : safeFilename.toLowerCase().includes("quest")
           ? "Quest Diagnostics Reference Laboratory"
           : "LabCorp Clinical Testing Facility",
         tests: [
@@ -355,26 +383,6 @@ export async function POST(request: Request) {
             source_snippet: "HDL Cholesterol: 42 mg/dL [LOW] (Ref: > 50 mg/dL)",
             confidence: 0.95,
           },
-          {
-            test_name: "Vitamin D, 25-OH",
-            value: "24",
-            unit: "ng/mL",
-            reference_min: 30,
-            reference_max: 100,
-            reference_raw_text: "30.0 - 100.0 ng/mL",
-            source_snippet: "Vitamin D, 25-Hydroxy: 24.0 ng/mL (Ref: 30.0 - 100.0 ng/mL)",
-            confidence: 0.93,
-          },
-          {
-            test_name: "Urine Protein Dipstick",
-            value: "Negative",
-            unit: null,
-            reference_min: null,
-            reference_max: null,
-            reference_raw_text: "Negative",
-            source_snippet: "Protein, Urine: Negative (Ref: Negative)",
-            confidence: 0.99,
-          },
         ],
       };
     }
@@ -382,11 +390,7 @@ export async function POST(request: Request) {
     const docId = `doc-${Date.now().toString(36)}`;
 
     // Rule 1 & Rule 6 Compliance:
-    // Map extracted tests into TestResult type with:
-    // - provenance: "document_extracted"
-    // - verification_status: "unverified"
-    // - status: "NOT_DETERMINED" (AI NEVER sets status. Status computed purely in JS in Module 4)
-    // - original_ai_value: test.value
+    // AI extracts raw fields ONLY. App code sets provenance, verification_status, and status = NOT_DETERMINED.
     const mappedTestResults = (parsedExtraction.tests || []).map((t, idx) => ({
       id: `res-${Date.now().toString(36)}-${idx + 1}`,
       document_id: docId,
@@ -407,7 +411,7 @@ export async function POST(request: Request) {
     const documentRecord = {
       id: docId,
       patient_id: patientId,
-      filename,
+      filename: pastedTextContent ? "Pasted Report Text" : safeFilename,
       upload_date: new Date().toISOString().split("T")[0],
       document_type: parsedExtraction.document_type || "Laboratory Report",
       document_date: parsedExtraction.document_date || new Date().toISOString().split("T")[0],

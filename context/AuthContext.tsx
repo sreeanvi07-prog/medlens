@@ -2,25 +2,26 @@
 
 import React, { createContext, useContext, useState, useEffect } from "react";
 import { useRouter, usePathname } from "next/navigation";
+import {
+  UserSession,
+  DemoRole,
+  getStoredSession,
+  saveSession,
+  clearStoredSession,
+  createDemoSession,
+} from "@/lib/session";
 
-export interface UserSession {
-  id: string;
-  name: string;
-  email: string;
-  role: string;
-  avatarInitials: string;
-}
+export type { UserSession, DemoRole };
 
 interface AuthContextType {
   user: UserSession | null;
   isLoaded: boolean;
-  login: (email: string, name?: string, role?: string) => void;
+  login: (displayName: string, role: DemoRole) => void;
+  loginAsEvaluator: () => void;
   logout: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
-
-const AUTH_STORAGE_KEY = "medlens_auth_session";
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<UserSession | null>(null);
@@ -29,75 +30,60 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
 
   useEffect(() => {
-    // Check localStorage on initial load
-    try {
-      const stored = localStorage.getItem(AUTH_STORAGE_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (parsed && parsed.email) {
-          setUser(parsed);
-        }
-      }
-    } catch {
-      // localStorage restricted or parsing failed
-    } finally {
-      setIsLoaded(true);
+    // Read stored session on initial mount
+    const stored = getStoredSession();
+    if (stored) {
+      setUser(stored);
     }
+    setIsLoaded(true);
   }, []);
 
   // Route protection guard
   useEffect(() => {
     if (!isLoaded) return;
 
-    const isPublicRoute = pathname === "/" || pathname === "/login";
+    const isPublicRoute = pathname === "/";
 
     if (!user && !isPublicRoute) {
-      // Unauthenticated user trying to access protected route -> redirect to sign-in
+      // Unauthenticated user trying to access protected route -> redirect to demo sign-in
       router.replace("/");
-    } else if (user && pathname === "/") {
-      // Authenticated user on sign-in page -> redirect to dashboard
+    } else if (user && isPublicRoute) {
+      // Authenticated demo user on sign-in page -> redirect to dashboard
       router.replace("/dashboard");
     }
   }, [user, isLoaded, pathname, router]);
 
-  const login = (email: string, name?: string, role?: string) => {
-    const formattedName = name || (email.split("@")[0].charAt(0).toUpperCase() + email.split("@")[0].slice(1));
-    const initials = formattedName
-      .split(" ")
-      .map((n) => n[0])
-      .join("")
-      .toUpperCase()
-      .slice(0, 2) || "MD";
-
-    const session: UserSession = {
-      id: `usr-${Date.now().toString(36)}`,
-      name: formattedName,
-      email,
-      role: role || "Clinical Physician",
-      avatarInitials: initials,
-    };
-
+  const login = (displayName: string, role: DemoRole) => {
+    const session = createDemoSession(displayName, role);
     setUser(session);
-    try {
-      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(session));
-    } catch {
-      // localStorage unavailable
-    }
-    router.push("/dashboard");
+    saveSession(session);
+    router.replace("/dashboard");
+  };
+
+  const loginAsEvaluator = () => {
+    const session = createDemoSession("Evaluator Demo", "evaluator");
+    setUser(session);
+    saveSession(session);
+    router.replace("/dashboard");
   };
 
   const logout = () => {
+    clearStoredSession();
     setUser(null);
-    try {
-      localStorage.removeItem(AUTH_STORAGE_KEY);
-    } catch {
-      // localStorage unavailable
+    if (typeof window !== "undefined") {
+      try {
+        window.history.replaceState(null, "", "/");
+      } catch {
+        // Fallback if history state fails
+      }
     }
-    router.push("/");
+    router.replace("/");
   };
 
   return (
-    <AuthContext.Provider value={{ user, isLoaded, login, logout }}>
+    <AuthContext.Provider
+      value={{ user, isLoaded, login, loginAsEvaluator, logout }}
+    >
       {children}
     </AuthContext.Provider>
   );
@@ -110,3 +96,4 @@ export function useAuth() {
   }
   return context;
 }
+
