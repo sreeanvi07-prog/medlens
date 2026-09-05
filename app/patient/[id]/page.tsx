@@ -23,6 +23,7 @@ import {
   Printer,
 } from "lucide-react";
 import { useData } from "@/context/DataContext";
+import { useAuth } from "@/context/AuthContext";
 import { ProvenanceBadge } from "@/components/ProvenanceBadge";
 import { TestResultTable } from "@/components/TestResultTable";
 import { AIAnalysisSummary } from "@/components/AIAnalysisSummary";
@@ -33,6 +34,7 @@ import { ConflictViewer } from "@/components/ConflictViewer";
 export default function PatientRecordPage() {
   const params = useParams();
   const patientId = params?.id as string;
+  const { user, isLoaded } = useAuth();
 
   const {
     getPatientById,
@@ -102,6 +104,14 @@ export default function PatientRecordPage() {
     });
   }, [allResults, selectedDocId, statusFilter, searchQuery]);
 
+  if (!isLoaded || !user) {
+    return (
+      <div className="min-h-[50vh] flex items-center justify-center">
+        <div className="w-8 h-8 rounded-full border-2 border-teal-500 border-t-transparent animate-spin" />
+      </div>
+    );
+  }
+
   if (!patient) {
     return (
       <div className="max-w-xl mx-auto my-16 text-center p-8 rounded-3xl border border-slate-800 bg-slate-900/90 shadow-2xl space-y-4">
@@ -114,7 +124,7 @@ export default function PatientRecordPage() {
         </p>
         <div className="pt-2">
           <Link
-            href="/"
+            href="/dashboard"
             className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold shadow-md transition-colors"
           >
             <ArrowLeft className="w-4 h-4" /> Return to Dashboard
@@ -139,7 +149,7 @@ export default function PatientRecordPage() {
       {/* Top Navigation & Breadcrumbs Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-2 text-xs text-slate-400">
-          <Link href="/" className="hover:text-white transition-colors flex items-center gap-1.5 font-medium">
+          <Link href="/dashboard" className="hover:text-white transition-colors flex items-center gap-1.5 font-medium">
             <ArrowLeft className="w-3.5 h-3.5" />
             <span>Dashboard</span>
           </Link>

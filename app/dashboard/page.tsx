@@ -1,0 +1,256 @@
+"use client";
+
+import React, { useState } from "react";
+import Link from "next/link";
+import {
+  Users,
+  FileText,
+  Activity,
+  ShieldCheck,
+  Cpu,
+  CheckCircle2,
+  UserPlus,
+  ChevronDown,
+  ChevronUp,
+} from "lucide-react";
+import { useData } from "@/context/DataContext";
+import { useAuth } from "@/context/AuthContext";
+import { PatientCard } from "@/components/PatientCard";
+import { SafetyBanner } from "@/components/SafetyBanner";
+import { ConflictViewer } from "@/components/ConflictViewer";
+
+export default function DashboardPage() {
+  const { patients, documents, testResults, conflicts } = useData();
+  const { user, isLoaded } = useAuth();
+  const [showInvariants, setShowInvariants] = useState(false);
+
+  const totalPatients = patients.length;
+  const totalDocuments = documents.length;
+  const totalTests = testResults.length;
+  const outOfRangeTests = testResults.filter(
+    (t) => t.status === "HIGH" || t.status === "LOW"
+  ).length;
+  const verifiedTests = testResults.filter(
+    (t) => t.verification_status === "verified"
+  ).length;
+  const openConflicts = conflicts.filter((c) => !c.resolved).length;
+
+  if (!isLoaded || !user) {
+    return (
+      <div className="min-h-[50vh] flex items-center justify-center">
+        <div className="w-8 h-8 rounded-full border-2 border-teal-500 border-t-transparent animate-spin" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-8 pb-12">
+      {/* Top Banner / Safety Guardrail */}
+      <SafetyBanner />
+
+      {/* Hero Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
+            Clinical Intake & Lab Intelligence
+          </h1>
+          <p className="text-xs sm:text-sm text-slate-400 mt-1">
+            Aggregated patient records with auditable data provenance and deterministic reference range evaluation.
+          </p>
+        </div>
+
+        {/* Primary Action Button (Teal accent, no redundant legend row) */}
+        <div>
+          <Link
+            href="/patient/new"
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold shadow-md shadow-teal-600/20 transition-all cursor-pointer"
+          >
+            <UserPlus className="w-4 h-4" />
+            <span>New Patient Intake</span>
+          </Link>
+        </div>
+      </div>
+
+      {/* Metric Stats Cards (Hierarchy Refined: Extracted Tests given visual weight, others receded) */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* 1. Total Patients (Receded) */}
+        <div className="rounded-2xl border border-slate-800/60 bg-slate-900/40 p-5">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-slate-400">Total Patients</span>
+            <div className="p-2 rounded-lg bg-slate-800 text-slate-400">
+              <Users className="w-4 h-4" />
+            </div>
+          </div>
+          <div className="mt-3 flex items-baseline gap-2">
+            <span className="text-2xl font-bold text-white">{totalPatients}</span>
+            <span className="text-xs text-slate-500">Active Profiles</span>
+          </div>
+        </div>
+
+        {/* 2. Processed Documents (Receded) */}
+        <div className="rounded-2xl border border-slate-800/60 bg-slate-900/40 p-5">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-slate-400">Processed Documents</span>
+            <div className="p-2 rounded-lg bg-slate-800 text-slate-400">
+              <FileText className="w-4 h-4" />
+            </div>
+          </div>
+          <div className="mt-3 flex items-baseline gap-2">
+            <span className="text-2xl font-bold text-white">{totalDocuments}</span>
+            <span className="text-xs text-slate-500">Quest, LabCorp, etc.</span>
+          </div>
+        </div>
+
+        {/* 3. Extracted Tests (PRIMARY FOCUS: Subtle Accent Border & Ring) */}
+        <div className="rounded-2xl border border-teal-500/50 bg-slate-900/90 p-5 shadow-sm ring-1 ring-teal-500/20 relative overflow-hidden">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-teal-300">Extracted Tests</span>
+            <div className="p-2 rounded-lg bg-teal-500/10 text-teal-400 border border-teal-500/30">
+              <Activity className="w-4 h-4" />
+            </div>
+          </div>
+          <div className="mt-3 flex items-baseline gap-2">
+            <span className="text-2xl font-extrabold text-white">{totalTests}</span>
+            <span className="text-xs font-bold text-rose-400">
+              {outOfRangeTests} Out-of-Range
+            </span>
+          </div>
+        </div>
+
+        {/* 4. Human Verified (Receded) */}
+        <div className="rounded-2xl border border-slate-800/60 bg-slate-900/40 p-5">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-slate-400">Human Verified</span>
+            <div className="p-2 rounded-lg bg-slate-800 text-slate-400">
+              <CheckCircle2 className="w-4 h-4" />
+            </div>
+          </div>
+          <div className="mt-3 flex items-baseline gap-2">
+            <span className="text-2xl font-bold text-emerald-400">{verifiedTests}</span>
+            <span className="text-xs text-slate-500">
+              {openConflicts > 0 ? `${openConflicts} conflicts pending` : `of ${totalTests} tests`}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* Patient Directory Grid */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-bold text-white flex items-center gap-2">
+              <Users className="w-5 h-5 text-teal-400" />
+              Patient Roster
+            </h2>
+            <p className="text-xs text-slate-400">
+              Select a patient record to view comprehensive clinical intake, lab tables, and verification actions.
+            </p>
+          </div>
+
+          <Link
+            href="/patient/new"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-teal-400 text-xs font-semibold border border-slate-700 transition-colors"
+          >
+            <UserPlus className="w-3.5 h-3.5" />
+            <span>+ Add Patient</span>
+          </Link>
+        </div>
+
+        {patients.length === 0 ? (
+          <div className="p-8 text-center rounded-2xl border border-dashed border-slate-800 bg-slate-900/40 space-y-3">
+            <Users className="w-10 h-10 text-slate-600 mx-auto" />
+            <h3 className="text-sm font-bold text-slate-300">No Patient Records Yet</h3>
+            <p className="text-xs text-slate-500 max-w-sm mx-auto">
+              Get started by submitting your first deterministic patient intake questionnaire.
+            </p>
+            <div className="pt-2">
+              <Link
+                href="/patient/new"
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold shadow-md"
+              >
+                <UserPlus className="w-4 h-4" />
+                <span>Create First Intake</span>
+              </Link>
+            </div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {patients.map((patient) => (
+              <PatientCard key={patient.id} patient={patient} />
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Data Lineage & Conflict Discrepancies */}
+      <ConflictViewer />
+
+      {/* Architectural Rules Verification Section (Collapsed by Default per Rule 6) */}
+      <div className="rounded-2xl border border-slate-800 bg-slate-900/40 overflow-hidden">
+        <button
+          type="button"
+          onClick={() => setShowInvariants((prev) => !prev)}
+          className="w-full p-4 sm:px-6 flex items-center justify-between text-left hover:bg-slate-800/40 transition-colors cursor-pointer"
+        >
+          <div className="flex items-center gap-2.5">
+            <Cpu className="w-4 h-4 text-teal-400" />
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-300">
+              Clinical Guardrails & Architecture Invariants (Rules 1–4)
+            </span>
+          </div>
+          <div className="flex items-center gap-1.5 text-xs text-slate-500 font-medium">
+            <span>{showInvariants ? "Hide Details" : "Show Rules"}</span>
+            {showInvariants ? (
+              <ChevronUp className="w-4 h-4 text-slate-400" />
+            ) : (
+              <ChevronDown className="w-4 h-4 text-slate-400" />
+            )}
+          </div>
+        </button>
+
+        {showInvariants && (
+          <div className="p-6 pt-2 border-t border-slate-800 space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+              <div className="p-3.5 rounded-xl bg-slate-800/50 border border-slate-700/60 space-y-1.5">
+                <div className="font-semibold text-teal-300 flex items-center gap-1.5">
+                  <ShieldCheck className="w-4 h-4" /> Rule 1: Deterministic Status Engine
+                </div>
+                <p className="text-slate-400 leading-relaxed">
+                  LLMs extract <code>reference_min</code>, <code>reference_max</code>, and <code>reference_raw_text</code>.
+                  Status (LOW, NORMAL, HIGH, NOT_DETERMINED) is calculated strictly via pure JS in <code>/lib/referenceRangeEngine.ts</code>.
+                </p>
+              </div>
+
+              <div className="p-3.5 rounded-xl bg-slate-800/50 border border-slate-700/60 space-y-1.5">
+                <div className="font-semibold text-sky-300 flex items-center gap-1.5">
+                  <ShieldCheck className="w-4 h-4" /> Rule 2: Explicit Data Provenance
+                </div>
+                <p className="text-slate-400 leading-relaxed">
+                  Every data point displays a provenance badge: 👤 User Provided (intake), 📄 Document Extracted (reports), 🤖 AI Generated (summaries), or ✓ Human Verified.
+                </p>
+              </div>
+
+              <div className="p-3.5 rounded-xl bg-slate-800/50 border border-slate-700/60 space-y-1.5">
+                <div className="font-semibold text-amber-300 flex items-center gap-1.5">
+                  <ShieldCheck className="w-4 h-4" /> Rule 3: Strictly Factual Summaries
+                </div>
+                <p className="text-slate-400 leading-relaxed">
+                  AI summaries report only factual counts and numerical delta changes across documents. No diagnostic labeling, no treatment suggestions.
+                </p>
+              </div>
+
+              <div className="p-3.5 rounded-xl bg-slate-800/50 border border-slate-700/60 space-y-1.5">
+                <div className="font-semibold text-rose-300 flex items-center gap-1.5">
+                  <ShieldCheck className="w-4 h-4" /> Rule 4: Diagnostic Safety Guardrail
+                </div>
+                <p className="text-slate-400 leading-relaxed">
+                  Any diagnostic inquiry (&quot;what should I take&quot;, &quot;do I have X&quot;) is intercepted by a fixed safety message directing to licensed healthcare providers.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

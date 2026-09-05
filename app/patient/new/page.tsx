@@ -12,11 +12,13 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { useData } from "@/context/DataContext";
+import { useAuth } from "@/context/AuthContext";
 import { Patient } from "@/lib/types";
 import { ProvenanceBadge } from "@/components/ProvenanceBadge";
 import { SafetyBanner } from "@/components/SafetyBanner";
 
 export default function NewPatientIntakePage() {
+  const { user, isLoaded } = useAuth();
   const { addPatient } = useData();
 
   // Form State
@@ -88,12 +90,20 @@ export default function NewPatientIntakePage() {
     setSubmittedPatient(null);
   };
 
+  if (!isLoaded || !user) {
+    return (
+      <div className="min-h-[50vh] flex items-center justify-center">
+        <div className="w-8 h-8 rounded-full border-2 border-teal-500 border-t-transparent animate-spin" />
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-4xl mx-auto space-y-8">
       {/* Top Breadcrumbs & Clinical Disclaimer */}
       <div className="flex items-center justify-between">
         <Link
-          href="/"
+          href="/dashboard"
           className="inline-flex items-center gap-2 text-xs font-semibold text-slate-400 hover:text-white transition-colors"
         >
           <ArrowLeft className="w-4 h-4" /> Back to Dashboard
@@ -222,7 +232,7 @@ export default function NewPatientIntakePage() {
 
               <div className="flex items-center gap-2 w-full sm:w-auto">
                 <Link
-                  href="/"
+                  href="/dashboard"
                   className="w-full sm:w-auto inline-flex items-center justify-center px-4 py-2.5 rounded-xl border border-slate-700 hover:bg-slate-800 text-slate-300 text-xs font-semibold transition-colors"
                 >
                   Dashboard
@@ -412,7 +422,7 @@ export default function NewPatientIntakePage() {
 
               <div className="flex items-center gap-2 w-full sm:w-auto">
                 <Link
-                  href="/"
+                  href="/dashboard"
                   className="w-full sm:w-auto px-4 py-2.5 rounded-xl border border-slate-700 hover:bg-slate-800 text-slate-300 text-xs font-semibold text-center transition-colors"
                 >
                   Cancel

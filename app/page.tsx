@@ -1,230 +1,236 @@
 "use client";
 
-import React from "react";
-import Link from "next/link";
+import React, { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import {
-  Users,
-  FileText,
   Activity,
   ShieldCheck,
-  Cpu,
-  CheckCircle2,
-  UserPlus,
+  Lock,
+  Mail,
+  ArrowRight,
+  UserCheck,
 } from "lucide-react";
-import { useData } from "@/context/DataContext";
-import { PatientCard } from "@/components/PatientCard";
-import { ProvenanceBadge } from "@/components/ProvenanceBadge";
-import { SafetyBanner } from "@/components/SafetyBanner";
-import { ConflictViewer } from "@/components/ConflictViewer";
+import { useAuth } from "@/context/AuthContext";
 
-export default function DashboardPage() {
-  const { patients, documents, testResults, conflicts } = useData();
+export default function SignInPage() {
+  const { user, isLoaded, login } = useAuth();
+  const router = useRouter();
 
-  const totalPatients = patients.length;
-  const totalDocuments = documents.length;
-  const totalTests = testResults.length;
-  const outOfRangeTests = testResults.filter(
-    (t) => t.status === "HIGH" || t.status === "LOW"
-  ).length;
-  const verifiedTests = testResults.filter(
-    (t) => t.verification_status === "verified"
-  ).length;
-  const openConflicts = conflicts.filter((c) => !c.resolved).length;
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (isLoaded && user) {
+      router.replace("/dashboard");
+    }
+  }, [user, isLoaded, router]);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email.trim()) {
+      setError("Please enter your clinical email address.");
+      return;
+    }
+    if (!password.trim()) {
+      setError("Please enter your access password.");
+      return;
+    }
+
+    setIsLoading(true);
+    setError(null);
+
+    setTimeout(() => {
+      login(email.trim(), undefined, "Clinical Physician");
+    }, 400);
+  };
+
+  const handleDemoLogin = (demoName: string, demoEmail: string, demoRole: string) => {
+    setIsLoading(true);
+    setError(null);
+    setTimeout(() => {
+      login(demoEmail, demoName, demoRole);
+    }, 300);
+  };
+
+  if (!isLoaded || user) {
+    return (
+      <div className="min-h-[70vh] flex items-center justify-center">
+        <div className="w-8 h-8 rounded-full border-2 border-teal-500 border-t-transparent animate-spin" />
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-8">
-      {/* Top Banner / Safety Guardrail */}
-      <SafetyBanner />
+    <div className="min-h-[75vh] flex flex-col items-center justify-center py-6 px-4">
+      <div className="w-full max-w-md space-y-6">
+        {/* Brand Header with FLAT Logo Icon (No Gradient) */}
+        <div className="text-center space-y-3">
+          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-teal-600 text-white shadow-xs mx-auto">
+            <Activity className="w-8 h-8 stroke-[2.5]" />
+          </div>
 
-      {/* Hero Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
-            Clinical Intake & Lab Intelligence
-          </h1>
-          <p className="text-sm text-slate-400 mt-1">
-            Aggregated patient records with auditable data provenance and deterministic reference range evaluation.
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
+              Med<span className="text-teal-400">Lens</span>
+            </h1>
+            <p className="text-xs font-semibold text-teal-300 uppercase tracking-wider mt-0.5">
+              Clinical Provenance & Lab Intelligence
+            </p>
+          </div>
+
+          <p className="text-xs text-slate-400 max-w-xs mx-auto">
+            Sign in to access patient records, deterministic lab extraction, and non-diagnostic clinical summaries.
           </p>
         </div>
 
-        {/* Provenance Key / Legend & New Intake Action */}
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="flex flex-wrap items-center gap-2 p-2 rounded-xl bg-slate-800/80 border border-slate-700/60 text-xs">
-            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-1">
-              Provenance:
-            </span>
-            <ProvenanceBadge type="user_provided" size="xs" />
-            <ProvenanceBadge type="document_extracted" size="xs" />
-            <ProvenanceBadge type="ai_generated" size="xs" />
-            <ProvenanceBadge type="verified" size="xs" />
-          </div>
+        {/* Sign In Card */}
+        <div className="rounded-3xl border border-slate-800 bg-slate-900/95 p-6 sm:p-8 shadow-xl space-y-5">
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {error && (
+              <div className="p-3 rounded-xl bg-rose-950/50 border border-rose-800/80 text-rose-300 text-xs flex items-center gap-2">
+                <span className="font-semibold">{error}</span>
+              </div>
+            )}
 
-          <Link
-            href="/patient/new"
-            className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold shadow-md shadow-teal-600/20 transition-all"
-          >
-            <UserPlus className="w-4 h-4" />
-            <span>New Intake</span>
-          </Link>
-        </div>
-      </div>
-
-      {/* Metric Stats Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-5 shadow-sm">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-400">Total Patients</span>
-            <div className="p-2 rounded-lg bg-sky-500/10 text-sky-400">
-              <Users className="w-4 h-4" />
+            <div className="space-y-1.5">
+              <label className="block text-xs font-semibold text-slate-300">
+                Clinical Email
+              </label>
+              <div className="relative">
+                <Mail className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => {
+                    setEmail(e.target.value);
+                    if (error) setError(null);
+                  }}
+                  placeholder="physician@hospital.org"
+                  className="w-full pl-10 pr-3.5 py-2.5 rounded-xl text-xs bg-slate-800/80 border border-slate-700 text-white placeholder-slate-500 focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500"
+                />
+              </div>
             </div>
-          </div>
-          <div className="mt-3 flex items-baseline gap-2">
-            <span className="text-2xl font-bold text-white">{totalPatients}</span>
-            <span className="text-xs text-slate-500">Active Profiles</span>
-          </div>
-        </div>
 
-        <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-5 shadow-sm">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-400">Processed Documents</span>
-            <div className="p-2 rounded-lg bg-indigo-500/10 text-indigo-400">
-              <FileText className="w-4 h-4" />
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <label className="block text-xs font-semibold text-slate-300">
+                  Password
+                </label>
+                <span className="text-[11px] text-slate-500 hover:text-slate-400 cursor-pointer">
+                  Forgot?
+                </span>
+              </div>
+              <div className="relative">
+                <Lock className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => {
+                    setPassword(e.target.value);
+                    if (error) setError(null);
+                  }}
+                  placeholder="••••••••••••"
+                  className="w-full pl-10 pr-3.5 py-2.5 rounded-xl text-xs bg-slate-800/80 border border-slate-700 text-white placeholder-slate-500 focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500"
+                />
+              </div>
             </div>
-          </div>
-          <div className="mt-3 flex items-baseline gap-2">
-            <span className="text-2xl font-bold text-white">{totalDocuments}</span>
-            <span className="text-xs text-slate-500">Quest, LabCorp, etc.</span>
-          </div>
-        </div>
 
-        <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-5 shadow-sm">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-400">Extracted Tests</span>
-            <div className="p-2 rounded-lg bg-teal-500/10 text-teal-400">
-              <Activity className="w-4 h-4" />
+            <button
+              type="submit"
+              disabled={isLoading}
+              className="w-full inline-flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold shadow-md shadow-teal-600/20 disabled:opacity-50 transition-all cursor-pointer"
+            >
+              {isLoading ? (
+                <span>Authenticating Session...</span>
+              ) : (
+                <>
+                  <span>Sign In to Dashboard</span>
+                  <ArrowRight className="w-4 h-4" />
+                </>
+              )}
+            </button>
+          </form>
+
+          {/* Quick Demo Credentials */}
+          <div className="pt-4 border-t border-slate-800 space-y-2.5">
+            <div className="flex items-center justify-between text-[11px] font-semibold text-slate-400">
+              <span className="flex items-center gap-1">
+                <UserCheck className="w-3.5 h-3.5 text-teal-400" />
+                Quick Clinical Demo Sign-In
+              </span>
+              <span className="text-[10px] text-slate-500 font-mono">1-Click</span>
             </div>
-          </div>
-          <div className="mt-3 flex items-baseline gap-2">
-            <span className="text-2xl font-bold text-white">{totalTests}</span>
-            <span className="text-xs text-rose-400 font-medium">
-              {outOfRangeTests} Out-of-Range
-            </span>
-          </div>
-        </div>
 
-        <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-5 shadow-sm">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-400">Human Verified</span>
-            <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-400">
-              <CheckCircle2 className="w-4 h-4" />
-            </div>
-          </div>
-          <div className="mt-3 flex items-baseline gap-2">
-            <span className="text-2xl font-bold text-emerald-400">{verifiedTests}</span>
-            <span className="text-xs text-slate-500">
-              {openConflicts > 0 ? `${openConflicts} conflicts pending` : `of ${totalTests} tests`}
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {/* Patient Directory Grid */}
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-lg font-bold text-white flex items-center gap-2">
-              <Users className="w-5 h-5 text-teal-400" />
-              Patient Roster
-            </h2>
-            <p className="text-xs text-slate-400">
-              Select a patient record to view comprehensive clinical intake, lab tables, and verification actions.
-            </p>
-          </div>
-
-          <Link
-            href="/patient/new"
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-teal-400 text-xs font-semibold border border-slate-700 transition-colors"
-          >
-            <UserPlus className="w-3.5 h-3.5" />
-            <span>+ Add Patient</span>
-          </Link>
-        </div>
-
-        {patients.length === 0 ? (
-          <div className="p-8 text-center rounded-2xl border border-dashed border-slate-800 bg-slate-900/40 space-y-3">
-            <Users className="w-10 h-10 text-slate-600 mx-auto" />
-            <h3 className="text-sm font-bold text-slate-300">No Patient Records Yet</h3>
-            <p className="text-xs text-slate-500 max-w-sm mx-auto">
-              Get started by submitting your first deterministic patient intake questionnaire.
-            </p>
-            <div className="pt-2">
-              <Link
-                href="/patient/new"
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold shadow-md"
+            <div className="grid grid-cols-1 gap-2">
+              <button
+                type="button"
+                onClick={() =>
+                  handleDemoLogin(
+                    "Dr. Sarah Jenkins",
+                    "s.jenkins@medlens.org",
+                    "Chief Medical Officer"
+                  )
+                }
+                className="w-full flex items-center justify-between p-2.5 rounded-xl bg-slate-800/60 hover:bg-slate-800 border border-slate-700/80 text-left transition-colors cursor-pointer group"
               >
-                <UserPlus className="w-4 h-4" />
-                <span>Create First Intake</span>
-              </Link>
+                <div className="flex items-center gap-2.5">
+                  <div className="w-7 h-7 rounded-lg bg-teal-600 text-white flex items-center justify-center text-xs font-bold">
+                    SJ
+                  </div>
+                  <div>
+                    <div className="text-xs font-semibold text-white group-hover:text-teal-300 transition-colors">
+                      Dr. Sarah Jenkins
+                    </div>
+                    <div className="text-[10px] text-slate-400">
+                      Chief Medical Officer • Internal Medicine
+                    </div>
+                  </div>
+                </div>
+                <span className="text-[11px] text-teal-400 font-medium opacity-80 group-hover:opacity-100">
+                  Select →
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() =>
+                  handleDemoLogin(
+                    "Marcus Lee",
+                    "m.lee@medlens.org",
+                    "Clinical Lab Operator"
+                  )
+                }
+                className="w-full flex items-center justify-between p-2.5 rounded-xl bg-slate-800/60 hover:bg-slate-800 border border-slate-700/80 text-left transition-colors cursor-pointer group"
+              >
+                <div className="flex items-center gap-2.5">
+                  <div className="w-7 h-7 rounded-lg bg-slate-700 text-teal-300 flex items-center justify-center text-xs font-bold">
+                    ML
+                  </div>
+                  <div>
+                    <div className="text-xs font-semibold text-white group-hover:text-teal-300 transition-colors">
+                      Marcus Lee
+                    </div>
+                    <div className="text-[10px] text-slate-400">
+                      Clinical Lab Operator • Reference Verification
+                    </div>
+                  </div>
+                </div>
+                <span className="text-[11px] text-teal-400 font-medium opacity-80 group-hover:opacity-100">
+                  Select →
+                </span>
+              </button>
             </div>
           </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {patients.map((patient) => (
-              <PatientCard key={patient.id} patient={patient} />
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Data Lineage & Conflict Discrepancies */}
-      <ConflictViewer />
-
-      {/* Architectural Rules Verification Section */}
-      <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-6 space-y-4">
-        <div className="flex items-center gap-2">
-          <Cpu className="w-5 h-5 text-indigo-400" />
-          <h3 className="text-sm font-bold text-white uppercase tracking-wider">
-            MedLens Core Safety Rules & Invariant Enforcement
-          </h3>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-          <div className="p-3.5 rounded-xl bg-slate-800/50 border border-slate-700/60 space-y-1.5">
-            <div className="font-semibold text-teal-300 flex items-center gap-1.5">
-              <ShieldCheck className="w-4 h-4" /> Rule 1: Deterministic Status Engine
-            </div>
-            <p className="text-slate-400 leading-relaxed">
-              LLMs extract <code>reference_min</code>, <code>reference_max</code>, and <code>reference_raw_text</code>.
-              Status (LOW, NORMAL, HIGH, NOT_DETERMINED) is calculated strictly via pure JS in <code>/lib/referenceRangeEngine.ts</code>.
-            </p>
-          </div>
-
-          <div className="p-3.5 rounded-xl bg-slate-800/50 border border-slate-700/60 space-y-1.5">
-            <div className="font-semibold text-sky-300 flex items-center gap-1.5">
-              <ShieldCheck className="w-4 h-4" /> Rule 2: Explicit Data Provenance
-            </div>
-            <p className="text-slate-400 leading-relaxed">
-              Every data point displays a provenance badge: 👤 User Provided (intake), 📄 Document Extracted (reports), 🤖 AI Generated (summaries), or ✓ Human Verified.
-            </p>
-          </div>
-
-          <div className="p-3.5 rounded-xl bg-slate-800/50 border border-slate-700/60 space-y-1.5">
-            <div className="font-semibold text-amber-300 flex items-center gap-1.5">
-              <ShieldCheck className="w-4 h-4" /> Rule 3: Strictly Factual Summaries
-            </div>
-            <p className="text-slate-400 leading-relaxed">
-              AI summaries report only factual counts and numerical delta changes across documents. No diagnostic labeling, no treatment suggestions.
-            </p>
-          </div>
-
-          <div className="p-3.5 rounded-xl bg-slate-800/50 border border-slate-700/60 space-y-1.5">
-            <div className="font-semibold text-rose-300 flex items-center gap-1.5">
-              <ShieldCheck className="w-4 h-4" /> Rule 4: Diagnostic Safety Guardrail
-            </div>
-            <p className="text-slate-400 leading-relaxed">
-              Any diagnostic inquiry (&quot;what should I take&quot;, &quot;do I have X&quot;) is intercepted by a fixed safety message directing to licensed healthcare providers.
-            </p>
-          </div>
+        {/* Security & Safety Note */}
+        <div className="text-center space-y-1 text-[11px] text-slate-500">
+          <p className="flex items-center justify-center gap-1.5">
+            <ShieldCheck className="w-3.5 h-3.5 text-teal-500" />
+            <span>Deterministic Reference Engine • HIPAA Demonstration Sandbox</span>
+          </p>
         </div>
       </div>
     </div>

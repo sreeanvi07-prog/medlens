@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { AuthProvider } from "@/context/AuthContext";
 import { DataProvider } from "@/context/DataContext";
 import { Header } from "@/components/Header";
 
@@ -17,20 +18,22 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark">
       <body className="bg-slate-900 text-slate-100 min-h-screen flex flex-col antialiased selection:bg-teal-500 selection:text-white">
-        <DataProvider>
-          <Header />
-          <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
-            {children}
-          </main>
-          <footer className="border-t border-slate-800 bg-slate-950 py-6 text-center text-xs text-slate-500">
-            <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
-              <p>MedLens AI • Next.js 14 App Router Baseline</p>
-              <p className="text-[11px] text-slate-600">
-                Pure deterministic range calculations • Rule 1-4 Guardrails Enforced
-              </p>
-            </div>
-          </footer>
-        </DataProvider>
+        <AuthProvider>
+          <DataProvider>
+            <Header />
+            <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
+              {children}
+            </main>
+            <footer className="border-t border-slate-800 bg-slate-950 py-6 text-center text-xs text-slate-500">
+              <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
+                <p>MedLens AI • Clinical Provenance & Reference Engine</p>
+                <p className="text-[11px] text-slate-600">
+                  Pure deterministic range calculations • Rules 1–4 Safety Guardrails Enforced
+                </p>
+              </div>
+            </footer>
+          </DataProvider>
+        </AuthProvider>
       </body>
     </html>
   );
