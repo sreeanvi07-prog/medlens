@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { Bot, Sparkles, AlertTriangle, Send, RefreshCw } from "lucide-react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
+import { Bot, Sparkles, AlertTriangle, Send, RefreshCw, AlertCircle } from "lucide-react";
 import { ProvenanceBadge } from "./ProvenanceBadge";
 import { Patient, Document, TestResult } from "@/lib/types";
 
@@ -29,6 +29,9 @@ const DIAGNOSTIC_KEYWORDS = [
   "prescription",
 ];
 
+// In-memory cache fallback if sessionStorage is unavailable
+const summaryMemoryCache = new Map<string, string>();
+
 export const AIAnalysisSummary: React.FC<AIAnalysisSummaryProps> = ({
   patient,
   documents,
@@ -37,56 +40,116 @@ export const AIAnalysisSummary: React.FC<AIAnalysisSummaryProps> = ({
   const [loading, setLoading] = useState(false);
   const [summaryText, setSummaryText] = useState<string>("");
   const [isBlocked, setIsBlocked] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [promptQuery, setPromptQuery] = useState("");
 
-  const fetchSummary = async (queryText = "") => {
-    // 1. Hardcoded client-side guardrail check before making any network call
-    if (queryText.trim().length > 0) {
-      const lowerQuery = queryText.toLowerCase();
-      const hasDiagnosticWord = DIAGNOSTIC_KEYWORDS.some((word) =>
-        lowerQuery.includes(word)
-      );
+  // Unique data signature to detect if patient data, documents, or test results have changed
+  const dataSignature = useMemo(() => {
+    const docSignatures = documents.map((d) => d.id).sort().join("|");
+    const testSignatures = results
+      .map((r) => `${r.id}:${r.value}:${r.verification_status}:${r.status}`)
+      .sort()
+      .join("|");
+    return `summary_v1_${patient.id}_${documents.length}_${results.length}_${docSignatures}_${testSignatures}`;
+  }, [patient.id, documents, results]);
 
-      if (hasDiagnosticWord) {
-        setIsBlocked(true);
-        setSummaryText(CLIENT_GUARD_MESSAGE);
-        return;
+  const getCachedSummary = useCallback((key: string): string | null => {
+    if (typeof window !== "undefined" && window.sessionStorage) {
+      try {
+        const stored = sessionStorage.getItem(key);
+        if (stored) return stored;
+      } catch {
+        // sessionStorage restricted
       }
     }
+    return summaryMemoryCache.get(key) || null;
+  }, []);
 
-    setIsBlocked(false);
-    setLoading(true);
-
-    try {
-      const res = await fetch("/api/summary", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          patient,
-          documents,
-          test_results: results,
-          query: queryText,
-        }),
-      });
-
-      const data = await res.json();
-      if (data.is_blocked_diagnostic_query) {
-        setIsBlocked(true);
+  const setCachedSummary = useCallback((key: string, value: string) => {
+    if (typeof window !== "undefined" && window.sessionStorage) {
+      try {
+        sessionStorage.setItem(key, value);
+      } catch {
+        // sessionStorage restricted
       }
-      setSummaryText(data.summary || "");
-    } catch (err) {
-      console.error(err);
-      setSummaryText("Unable to generate summary at this time.");
-    } finally {
-      setLoading(false);
     }
-  };
+    summaryMemoryCache.set(key, value);
+  }, []);
+
+  const fetchSummary = useCallback(
+    async (queryText = "", forceRefresh = false) => {
+      // 1. Hardcoded client-side guardrail check before making any network call
+      if (queryText.trim().length > 0) {
+        const lowerQuery = queryText.toLowerCase();
+        const hasDiagnosticWord = DIAGNOSTIC_KEYWORDS.some((word) =>
+          lowerQuery.includes(word)
+        );
+
+        if (hasDiagnosticWord) {
+          setIsBlocked(true);
+          setErrorMessage(null);
+          setSummaryText(CLIENT_GUARD_MESSAGE);
+          return;
+        }
+      }
+
+      // Check cache if default summary and not force refreshing
+      if (!queryText.trim() && !forceRefresh) {
+        const cached = getCachedSummary(dataSignature);
+        if (cached) {
+          setIsBlocked(false);
+          setErrorMessage(null);
+          setSummaryText(cached);
+          return;
+        }
+      }
+
+      setIsBlocked(false);
+      setErrorMessage(null);
+      setLoading(true);
+
+      try {
+        const res = await fetch("/api/summary", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            patient,
+            documents,
+            test_results: results,
+            query: queryText,
+          }),
+        });
+
+        const data = await res.json();
+        if (!res.ok || data.success === false) {
+          throw new Error(data.error || "Failed to generate factual summary");
+        }
+
+        if (data.is_blocked_diagnostic_query) {
+          setIsBlocked(true);
+        }
+
+        const generatedSummary = data.summary || "";
+        setSummaryText(generatedSummary);
+
+        // Cache the default summary for this data signature
+        if (!queryText.trim() && generatedSummary) {
+          setCachedSummary(dataSignature, generatedSummary);
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : "Unable to generate summary at this time.";
+        setErrorMessage(msg);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [patient, documents, results, dataSignature, getCachedSummary, setCachedSummary]
+  );
 
   useEffect(() => {
-    // Automatically generate initial summary on load
-    fetchSummary("");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [patient.id, results.length]);
+    // Only fetch or load from cache when dataSignature changes
+    fetchSummary("", false);
+  }, [dataSignature, fetchSummary]);
 
   return (
     <div className="rounded-2xl border border-purple-900/40 bg-slate-900/90 shadow-md p-6 space-y-4">
@@ -110,7 +173,7 @@ export const AIAnalysisSummary: React.FC<AIAnalysisSummaryProps> = ({
         </div>
 
         <button
-          onClick={() => fetchSummary("")}
+          onClick={() => fetchSummary("", true)}
           disabled={loading}
           className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold shadow-xs disabled:opacity-50 transition-colors cursor-pointer"
         >
@@ -125,9 +188,23 @@ export const AIAnalysisSummary: React.FC<AIAnalysisSummaryProps> = ({
 
       {/* Summary Content Body */}
       {loading ? (
-        <div className="py-6 flex items-center justify-center gap-2 text-xs text-slate-400">
-          <RefreshCw className="w-4 h-4 animate-spin text-purple-400" />
+        <div className="py-8 flex flex-col items-center justify-center gap-2 text-xs text-slate-400">
+          <RefreshCw className="w-5 h-5 animate-spin text-purple-400" />
           <span>Synthesizing factual non-diagnostic summary...</span>
+        </div>
+      ) : errorMessage ? (
+        <div className="p-4 rounded-xl border border-rose-800/80 bg-rose-950/40 text-rose-200 space-y-2 text-xs">
+          <div className="flex items-center gap-1.5 font-bold text-rose-400">
+            <AlertCircle className="w-4 h-4" />
+            <span>Summary Generation Error</span>
+          </div>
+          <p className="text-slate-300 leading-relaxed">{errorMessage}</p>
+          <button
+            onClick={() => fetchSummary("", true)}
+            className="mt-1 px-3 py-1.5 rounded-lg bg-rose-900/60 hover:bg-rose-900 text-rose-200 font-semibold text-xs border border-rose-700 cursor-pointer"
+          >
+            Retry Summary Generation
+          </button>
         </div>
       ) : isBlocked ? (
         <div className="p-4 rounded-xl border border-rose-800/80 bg-rose-950/40 text-rose-200 space-y-1.5 text-xs">
@@ -159,7 +236,7 @@ export const AIAnalysisSummary: React.FC<AIAnalysisSummaryProps> = ({
             className="flex-1 px-3 py-2 rounded-xl text-xs bg-slate-800/90 border border-slate-700 text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-purple-500"
           />
           <button
-            onClick={() => fetchSummary(promptQuery)}
+            onClick={() => fetchSummary(promptQuery, false)}
             disabled={loading || !promptQuery.trim()}
             className="px-3.5 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold shadow-xs disabled:opacity-40 transition-colors flex items-center gap-1.5 cursor-pointer"
           >

@@ -23,6 +23,15 @@ interface DocumentUploadProps {
   onSuccess?: (doc: Document, results: TestResult[]) => void;
 }
 
+const ALLOWED_MIME_TYPES = [
+  "application/pdf",
+  "image/jpeg",
+  "image/jpg",
+  "image/png",
+];
+
+const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10MB
+
 export const DocumentUpload: React.FC<DocumentUploadProps> = ({
   patientId,
   patientName,
@@ -75,15 +84,29 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({
   };
 
   const processFile = (file: File) => {
-    const validTypes = [
-      "application/pdf",
-      "image/jpeg",
-      "image/jpg",
-      "image/png",
-    ];
+    if (!file) {
+      setErrorMessage("No file selected.");
+      return;
+    }
 
-    if (!validTypes.includes(file.type) && !file.name.match(/\.(pdf|png|jpe?g)$/i)) {
-      setErrorMessage("Please upload a valid PDF or Image file (PDF, PNG, JPG).");
+    const hasValidMime = ALLOWED_MIME_TYPES.includes(file.type.toLowerCase());
+    const hasValidExt = /\.(pdf|png|jpe?g)$/i.test(file.name);
+
+    if (!hasValidMime && !hasValidExt) {
+      setSelectedFile(null);
+      setErrorMessage("Invalid file type. Only PDF and image files (PDF, PNG, JPG) are supported.");
+      return;
+    }
+
+    if (file.size > MAX_FILE_SIZE_BYTES) {
+      setSelectedFile(null);
+      setErrorMessage(`File size (${(file.size / (1024 * 1024)).toFixed(1)}MB) exceeds the 10MB limit. Please select a smaller file.`);
+      return;
+    }
+
+    if (file.size === 0) {
+      setSelectedFile(null);
+      setErrorMessage("The selected file is empty (0 bytes). Please upload a valid document.");
       return;
     }
 
@@ -94,7 +117,10 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({
   };
 
   const handleUploadAndExtract = async () => {
-    if (!selectedFile) return;
+    if (!selectedFile) {
+      setErrorMessage("Please select a valid document file before submitting.");
+      return;
+    }
 
     setLoadingState("analyzing");
     setErrorMessage(null);
@@ -107,7 +133,7 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({
       // Visual step indicator
       setTimeout(() => {
         setLoadingState((prev) => (prev === "analyzing" ? "extracting" : prev));
-      }, 1200);
+      }, 1000);
 
       const res = await fetch("/api/extract", {
         method: "POST",
@@ -223,7 +249,7 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({
                     <span className="text-teal-400 underline">browse files</span>
                   </p>
                   <p className="text-xs text-slate-500 mt-1">
-                    Accepts PDF, PNG, JPG / JPEG (Lab reports, blood tests, panels)
+                    Accepts PDF, PNG, JPG / JPEG (Max 10MB)
                   </p>
                 </div>
               )}

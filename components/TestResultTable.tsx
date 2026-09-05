@@ -121,8 +121,16 @@ export const TestResultTable: React.FC<TestResultTableProps> = ({
           <tbody className="divide-y divide-slate-800/60">
             {displayedResults.length === 0 ? (
               <tr>
-                <td colSpan={7} className="py-8 text-center text-slate-400">
-                  No laboratory tests found for this filter.
+                <td colSpan={7} className="py-12 text-center text-slate-400">
+                  <div className="flex flex-col items-center justify-center space-y-2">
+                    <FileSearch className="w-8 h-8 text-slate-600" />
+                    <p className="font-semibold text-slate-300 text-xs">No laboratory tests found</p>
+                    <p className="text-[11px] text-slate-500 max-w-sm">
+                      {filterDocumentId
+                        ? "No test results recorded for this specific document."
+                        : "No test results match the current filter or search criteria."}
+                    </p>
+                  </div>
                 </td>
               </tr>
             ) : (

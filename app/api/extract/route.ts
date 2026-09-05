@@ -40,6 +40,33 @@ Respond with ONLY valid JSON matching this exact shape, no markdown fences, no p
 }
 If you cannot find any test results, return "tests": [].`;
 
+const ALLOWED_MIME_TYPES = [
+  "application/pdf",
+  "image/jpeg",
+  "image/jpg",
+  "image/png",
+];
+
+const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10MB limit
+
+interface RawTestItem {
+  test_name?: unknown;
+  value?: unknown;
+  unit?: unknown;
+  reference_min?: unknown;
+  reference_max?: unknown;
+  reference_raw_text?: unknown;
+  source_snippet?: unknown;
+  confidence?: unknown;
+}
+
+interface RawExtractionPayload {
+  document_type?: unknown;
+  document_date?: unknown;
+  laboratory?: unknown;
+  tests?: unknown;
+}
+
 function cleanJsonString(raw: string): string {
   let cleaned = raw.trim();
   // Remove markdown code fences if model wrapped response
@@ -51,6 +78,87 @@ function cleanJsonString(raw: string): string {
   return cleaned.trim();
 }
 
+/**
+ * Validates and normalizes raw parsed JSON from AI extraction
+ */
+function validateExtractionShape(parsed: unknown): {
+  document_type: string;
+  document_date: string | null;
+  laboratory: string | null;
+  tests: Array<{
+    test_name: string;
+    value: string;
+    unit: string | null;
+    reference_min: number | null;
+    reference_max: number | null;
+    reference_raw_text: string;
+    source_snippet: string;
+    confidence: number;
+  }>;
+} {
+  if (!parsed || typeof parsed !== "object") {
+    throw new Error("Invalid AI extraction response: root is not an object.");
+  }
+
+  const p = parsed as RawExtractionPayload;
+  const docType = typeof p.document_type === "string" && p.document_type.trim() ? p.document_type.trim() : "Laboratory Report";
+  const docDate = typeof p.document_date === "string" && p.document_date.trim() ? p.document_date.trim() : null;
+  const lab = typeof p.laboratory === "string" && p.laboratory.trim() ? p.laboratory.trim() : null;
+
+  const rawTests = Array.isArray(p.tests) ? p.tests : [];
+  const validatedTests = rawTests.map((item: unknown) => {
+    const t = (item && typeof item === "object" ? item : {}) as RawTestItem;
+    const testName = typeof t.test_name === "string" && t.test_name.trim() ? t.test_name.trim() : "Unspecified Test";
+    const val = t.value !== undefined && t.value !== null ? String(t.value).trim() : "Not stated";
+    const unit = typeof t.unit === "string" && t.unit.trim() ? t.unit.trim() : null;
+    
+    let refMin: number | null = null;
+    if (typeof t.reference_min === "number" && !isNaN(t.reference_min)) {
+      refMin = t.reference_min;
+    } else if (typeof t.reference_min === "string" && t.reference_min.trim() !== "" && !isNaN(Number(t.reference_min))) {
+      refMin = Number(t.reference_min);
+    }
+
+    let refMax: number | null = null;
+    if (typeof t.reference_max === "number" && !isNaN(t.reference_max)) {
+      refMax = t.reference_max;
+    } else if (typeof t.reference_max === "string" && t.reference_max.trim() !== "" && !isNaN(Number(t.reference_max))) {
+      refMax = Number(t.reference_max);
+    }
+
+    const refRaw = typeof t.reference_raw_text === "string" && t.reference_raw_text.trim()
+      ? t.reference_raw_text.trim()
+      : "not provided";
+    
+    const sourceSnippet = typeof t.source_snippet === "string" && t.source_snippet.trim()
+      ? t.source_snippet.trim()
+      : "";
+
+    let confidence = 0.9;
+    if (typeof t.confidence === "number" && !isNaN(t.confidence)) {
+      confidence = Math.min(1, Math.max(0, t.confidence));
+    }
+
+    return {
+      test_name: testName,
+      value: val,
+      unit,
+      reference_min: refMin,
+      reference_max: refMax,
+      reference_raw_text: refRaw,
+      source_snippet: sourceSnippet,
+      confidence,
+    };
+  });
+
+  return {
+    document_type: docType,
+    document_date: docDate,
+    laboratory: lab,
+    tests: validatedTests,
+  };
+}
+
 export async function POST(request: Request) {
   try {
     const contentType = request.headers.get("content-type") || "";
@@ -58,21 +166,48 @@ export async function POST(request: Request) {
     let mimeType = "application/pdf";
     let filename = "uploaded_report.pdf";
     let patientId = "pat-101";
+    let fileSizeBytes = 0;
 
     if (contentType.includes("multipart/form-data")) {
       const formData = await request.formData();
       const file = formData.get("file") as File | null;
       patientId = (formData.get("patient_id") as string) || "pat-101";
 
-      if (!file) {
+      if (!file || file.size === 0) {
         return NextResponse.json(
-          { success: false, error: "No document file uploaded." },
+          { success: false, error: "No document file uploaded or file is empty." },
           { status: 400 }
         );
       }
 
-      filename = file.name;
-      mimeType = file.type || (filename.endsWith(".pdf") ? "application/pdf" : "image/jpeg");
+      fileSizeBytes = file.size;
+      filename = file.name || "uploaded_report.pdf";
+      mimeType = file.type || (filename.toLowerCase().endsWith(".pdf") ? "application/pdf" : "image/jpeg");
+
+      // Validate MIME type
+      const normalizedMime = mimeType.toLowerCase();
+      const hasValidExt = /\.(pdf|png|jpe?g)$/i.test(filename);
+      if (!ALLOWED_MIME_TYPES.includes(normalizedMime) && !hasValidExt) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "Invalid file type. Only PDF and image files (PDF, PNG, JPG) are supported.",
+          },
+          { status: 400 }
+        );
+      }
+
+      // Validate File Size (10MB)
+      if (fileSizeBytes > MAX_FILE_SIZE_BYTES) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: `File size (${(fileSizeBytes / (1024 * 1024)).toFixed(1)}MB) exceeds the 10MB limit.`,
+          },
+          { status: 400 }
+        );
+      }
+
       const bytes = await file.arrayBuffer();
       fileBase64 = Buffer.from(bytes).toString("base64");
     } else {
@@ -81,61 +216,79 @@ export async function POST(request: Request) {
       mimeType = jsonBody.mime_type || "application/pdf";
       filename = jsonBody.filename || "lab_report.pdf";
       patientId = jsonBody.patient_id || "pat-101";
+
+      if (!fileBase64) {
+        return NextResponse.json(
+          { success: false, error: "No document payload provided." },
+          { status: 400 }
+        );
+      }
+
+      // Check base64 size approximate (3/4 of string length)
+      fileSizeBytes = Math.round((fileBase64.length * 3) / 4);
+      if (fileSizeBytes > MAX_FILE_SIZE_BYTES) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: `Payload size exceeds the 10MB limit.`,
+          },
+          { status: 400 }
+        );
+      }
+
+      // Validate MIME type
+      const normalizedMime = mimeType.toLowerCase();
+      const hasValidExt = /\.(pdf|png|jpe?g)$/i.test(filename);
+      if (!ALLOWED_MIME_TYPES.includes(normalizedMime) && !hasValidExt) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "Invalid file type. Only PDF and image files (PDF, PNG, JPG) are supported.",
+          },
+          { status: 400 }
+        );
+      }
     }
 
-    let parsedExtraction: {
-      document_type: string;
-      document_date: string | null;
-      laboratory: string | null;
-      tests: Array<{
-        test_name: string;
-        value: string;
-        unit: string | null;
-        reference_min: number | null;
-        reference_max: number | null;
-        reference_raw_text: string;
-        source_snippet: string;
-        confidence: number;
-      }>;
-    };
+    let parsedExtraction: ReturnType<typeof validateExtractionShape>;
 
+    // Secrets must only be referenced in server-side API routes, read from environment variables
     const apiKey =
       process.env.GEMINI_API_KEY ||
       process.env.GOOGLE_API_KEY ||
-      process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+      process.env.GOOGLE_GENAI_API_KEY;
 
     if (apiKey && fileBase64) {
-      // Call Gemini Vision Model directly on the uploaded file
-      const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({
-        model: "gemini-1.5-flash",
-        generationConfig: {
-          temperature: 0.1,
-          responseMimeType: "application/json",
-        },
-      });
-
-      const result = await model.generateContent([
-        {
-          inlineData: {
-            mimeType,
-            data: fileBase64,
-          },
-        },
-        EXTRACTION_SYSTEM_PROMPT,
-      ]);
-
-      const responseText = result.response.text();
-      const cleaned = cleanJsonString(responseText);
-
       try {
-        parsedExtraction = JSON.parse(cleaned);
+        // Call Gemini Vision Model directly on the uploaded file
+        const genAI = new GoogleGenerativeAI(apiKey);
+        const model = genAI.getGenerativeModel({
+          model: "gemini-1.5-flash",
+          generationConfig: {
+            temperature: 0.1,
+            responseMimeType: "application/json",
+          },
+        });
+
+        const result = await model.generateContent([
+          {
+            inlineData: {
+              mimeType: ALLOWED_MIME_TYPES.includes(mimeType) ? mimeType : "application/pdf",
+              data: fileBase64,
+            },
+          },
+          EXTRACTION_SYSTEM_PROMPT,
+        ]);
+
+        const responseText = result.response.text();
+        const cleaned = cleanJsonString(responseText);
+        const rawParsed = JSON.parse(cleaned);
+        parsedExtraction = validateExtractionShape(rawParsed);
       } catch {
         return NextResponse.json(
           {
             success: false,
             error: "Failed to parse structured JSON from AI extraction response.",
-            raw_response: responseText,
           },
           { status: 422 }
         );

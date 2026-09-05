@@ -150,11 +150,30 @@ export default function DashboardPage() {
           </Link>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {patients.map((patient) => (
-            <PatientCard key={patient.id} patient={patient} />
-          ))}
-        </div>
+        {patients.length === 0 ? (
+          <div className="p-8 text-center rounded-2xl border border-dashed border-slate-800 bg-slate-900/40 space-y-3">
+            <Users className="w-10 h-10 text-slate-600 mx-auto" />
+            <h3 className="text-sm font-bold text-slate-300">No Patient Records Yet</h3>
+            <p className="text-xs text-slate-500 max-w-sm mx-auto">
+              Get started by submitting your first deterministic patient intake questionnaire.
+            </p>
+            <div className="pt-2">
+              <Link
+                href="/patient/new"
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold shadow-md"
+              >
+                <UserPlus className="w-4 h-4" />
+                <span>Create First Intake</span>
+              </Link>
+            </div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {patients.map((patient) => (
+              <PatientCard key={patient.id} patient={patient} />
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Data Lineage & Conflict Discrepancies */}

@@ -366,67 +366,90 @@ export default function PatientRecordPage() {
             </h3>
           </div>
 
-          <button
-            onClick={() => setSelectedDocId("all")}
-            className={`px-3 py-1 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
-              selectedDocId === "all"
-                ? "bg-teal-600 text-white shadow-xs"
-                : "bg-slate-800 text-slate-300 hover:bg-slate-700"
-            }`}
-          >
-            Show All Documents
-          </button>
+          {documents.length > 0 && (
+            <button
+              onClick={() => setSelectedDocId("all")}
+              className={`px-3 py-1 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                selectedDocId === "all"
+                  ? "bg-teal-600 text-white shadow-xs"
+                  : "bg-slate-800 text-slate-300 hover:bg-slate-700"
+              }`}
+            >
+              Show All Documents
+            </button>
+          )}
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {documents.map((doc) => {
-            const isSelected = selectedDocId === doc.id;
-            const docResultsCount = allResults.filter(
-              (r) => r.document_id === doc.id
-            ).length;
+        {documents.length === 0 ? (
+          <div className="p-8 rounded-2xl border border-dashed border-slate-800 bg-slate-900/40 text-center space-y-3">
+            <div className="w-12 h-12 rounded-2xl bg-slate-800/80 border border-slate-700 flex items-center justify-center text-slate-400 mx-auto">
+              <FileText className="w-6 h-6 text-blue-400" />
+            </div>
+            <div className="space-y-1">
+              <h4 className="text-xs font-bold text-white">No Laboratory Documents Processed Yet</h4>
+              <p className="text-[11px] text-slate-400 max-w-sm mx-auto">
+                Upload PDF or image laboratory reports (e.g., Quest, LabCorp) to extract test results with verbatim source traces.
+              </p>
+            </div>
+            <button
+              onClick={() => setShowUploadModal(true)}
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold shadow-sm cursor-pointer"
+            >
+              <Upload className="w-3.5 h-3.5" />
+              <span>Upload Lab Report</span>
+            </button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {documents.map((doc) => {
+              const isSelected = selectedDocId === doc.id;
+              const docResultsCount = allResults.filter(
+                (r) => r.document_id === doc.id
+              ).length;
 
-            return (
-              <div
-                key={doc.id}
-                onClick={() => setSelectedDocId(isSelected ? "all" : doc.id)}
-                className={`p-4 rounded-2xl border transition-all cursor-pointer ${
-                  isSelected
-                    ? "bg-blue-950/40 border-blue-500 shadow-md ring-1 ring-blue-500"
-                    : "bg-slate-900 border-slate-800 hover:border-slate-700"
-                }`}
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold text-white text-xs line-clamp-1">
-                        {doc.document_type}
-                      </span>
+              return (
+                <div
+                  key={doc.id}
+                  onClick={() => setSelectedDocId(isSelected ? "all" : doc.id)}
+                  className={`p-4 rounded-2xl border transition-all cursor-pointer ${
+                    isSelected
+                      ? "bg-blue-950/40 border-blue-500 shadow-md ring-1 ring-blue-500"
+                      : "bg-slate-900 border-slate-800 hover:border-slate-700"
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-white text-xs line-clamp-1">
+                          {doc.document_type}
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-slate-400 font-mono flex items-center gap-1">
+                        <FileText className="w-3 h-3 text-blue-400 shrink-0" />
+                        <span className="truncate">{doc.filename}</span>
+                      </div>
                     </div>
-                    <div className="text-[11px] text-slate-400 font-mono flex items-center gap-1">
-                      <FileText className="w-3 h-3 text-blue-400 shrink-0" />
-                      <span className="truncate">{doc.filename}</span>
+
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 shrink-0">
+                      {docResultsCount} tests
+                    </span>
+                  </div>
+
+                  <div className="mt-3 pt-3 border-t border-slate-800/80 grid grid-cols-2 gap-2 text-[11px] text-slate-400">
+                    <div className="flex items-center gap-1 truncate">
+                      <Building className="w-3 h-3 text-slate-500 shrink-0" />
+                      <span className="truncate">{doc.laboratory}</span>
+                    </div>
+                    <div className="flex items-center gap-1 justify-end">
+                      <Calendar className="w-3 h-3 text-slate-500 shrink-0" />
+                      <span>{doc.document_date}</span>
                     </div>
                   </div>
-
-                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 shrink-0">
-                    {docResultsCount} tests
-                  </span>
                 </div>
-
-                <div className="mt-3 pt-3 border-t border-slate-800/80 grid grid-cols-2 gap-2 text-[11px] text-slate-400">
-                  <div className="flex items-center gap-1 truncate">
-                    <Building className="w-3 h-3 text-slate-500 shrink-0" />
-                    <span className="truncate">{doc.laboratory}</span>
-                  </div>
-                  <div className="flex items-center gap-1 justify-end">
-                    <Calendar className="w-3 h-3 text-slate-500 shrink-0" />
-                    <span>{doc.document_date}</span>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* 6. STRUCTURED LAB RESULTS TABLE CONTROLS & TABLE */}

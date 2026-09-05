@@ -42,6 +42,9 @@ const DIAGNOSTIC_TRIGGER_WORDS = [
   "prescription",
 ];
 
+const REQUIRED_DISCLAIMER_ENDING =
+  "MedLens organizes and explains information from your records. It does not provide a medical diagnosis or treatment recommendation.";
+
 export async function POST(request: Request) {
   try {
     const body = await request.json().catch(() => ({}));
@@ -72,10 +75,11 @@ export async function POST(request: Request) {
       });
     }
 
+    // Secrets must only be referenced in server-side API routes, read from environment variables
     const apiKey =
       process.env.GEMINI_API_KEY ||
       process.env.GOOGLE_API_KEY ||
-      process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+      process.env.GOOGLE_GENAI_API_KEY;
 
     // Build structured context representation
     const recordPayload = {
@@ -115,27 +119,34 @@ export async function POST(request: Request) {
     let summaryText = "";
 
     if (apiKey) {
-      const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({
-        model: "gemini-1.5-flash",
-        generationConfig: {
-          temperature: 0.1,
-        },
-      });
+      try {
+        const genAI = new GoogleGenerativeAI(apiKey);
+        const model = genAI.getGenerativeModel({
+          model: "gemini-1.5-flash",
+          generationConfig: {
+            temperature: 0.1,
+          },
+        });
 
-      const userPrompt = `Here is the patient's structured medical record:\n${JSON.stringify(
-        recordPayload,
-        null,
-        2
-      )}\n\nWrite the non-diagnostic factual summary following the system prompt rules strictly.`;
+        const userPrompt = `Here is the patient's structured medical record:\n${JSON.stringify(
+          recordPayload,
+          null,
+          2
+        )}\n\nWrite the non-diagnostic factual summary following the system prompt rules strictly.`;
 
-      const result = await model.generateContent([
-        { text: SUMMARY_SYSTEM_PROMPT },
-        { text: userPrompt },
-      ]);
+        const result = await model.generateContent([
+          { text: SUMMARY_SYSTEM_PROMPT },
+          { text: userPrompt },
+        ]);
 
-      summaryText = result.response.text().trim();
-    } else {
+        summaryText = result.response.text().trim();
+      } catch {
+        // Fallback to deterministic summary if API fails
+        summaryText = "";
+      }
+    }
+
+    if (!summaryText) {
       // Deterministic realistic synthesis following the exact prompt specification
       const totalDocs = documents.length;
       const totalTests = test_results.length;
@@ -149,25 +160,24 @@ export async function POST(request: Request) {
       const patientName = patient?.name || "The patient";
 
       summaryText = [
-        `This record contains intake data and laboratory reports for ${patientName}. A total of ${totalDocs} laboratory documents have been processed, containing ${totalTests} individual test results. Currently, ${outsideRange} test results fall outside the reference range provided in the report, while ${needsVerification} items are marked pending human verification.`,
+        `This record contains intake data and laboratory reports for ${patientName}. A total of ${totalDocs} laboratory document${totalDocs !== 1 ? "s have" : " has"} been processed, containing ${totalTests} individual test result${totalTests !== 1 ? "s" : ""}. Currently, ${outsideRange} test result${outsideRange !== 1 ? "s fall" : " falls"} outside the reference range provided in the report, while ${needsVerification} item${needsVerification !== 1 ? "s are" : " is"} marked pending human verification.`,
         ``,
         `• Reports processed: ${totalDocs}`,
         `• Test results extracted: ${totalTests}`,
         `• Results outside reference range: ${outsideRange}`,
         `• Items needing verification: ${needsVerification}`,
         ``,
-        `MedLens organizes and explains information from your records. It does not provide a medical diagnosis or treatment recommendation.`,
+        REQUIRED_DISCLAIMER_ENDING,
       ].join("\n");
     }
 
     // Ensure the verbatim disclaimer is always present at the end
-    const requiredEnding =
-      "MedLens organizes and explains information from your records. It does not provide a medical diagnosis or treatment recommendation.";
     if (!summaryText.includes("MedLens organizes and explains information")) {
-      summaryText = `${summaryText}\n\n${requiredEnding}`;
+      summaryText = `${summaryText}\n\n${REQUIRED_DISCLAIMER_ENDING}`;
     }
 
     return NextResponse.json({
+      success: true,
       type: "factual_summary",
       is_blocked_diagnostic_query: false,
       summary: summaryText,
