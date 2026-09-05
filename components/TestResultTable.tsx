@@ -11,7 +11,11 @@ import {
 import { TestResult } from "@/lib/types";
 import { StatusBadge } from "./StatusBadge";
 import { ProvenanceBadge } from "./ProvenanceBadge";
-import { formatReferenceRange } from "@/lib/referenceRangeEngine";
+import {
+  computeStatus,
+  parseNumericValue,
+  formatReferenceRange,
+} from "@/lib/referenceRangeEngine";
 import { useData } from "@/context/DataContext";
 
 interface TestResultTableProps {
@@ -79,14 +83,14 @@ export const TestResultTable: React.FC<TestResultTableProps> = ({
             </span>
           </h3>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            Rule 1 active: Status computed purely via deterministic reference engine. AI extracts bounds only.
+            Rule 1 active: Status computed purely via <code>computeStatus()</code> in <code>referenceRangeEngine.ts</code>. AI extraction sets status = NOT_DETERMINED.
           </p>
         </div>
 
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-300 bg-teal-50 dark:bg-teal-950/60 border border-teal-200 dark:border-teal-800 px-2.5 py-1 rounded-lg">
             <ShieldCheck className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400" />
-            <span>Pure Range Engine</span>
+            <span>Pure Range Engine (Module 4)</span>
           </div>
         </div>
       </div>
@@ -115,6 +119,15 @@ export const TestResultTable: React.FC<TestResultTableProps> = ({
             ) : (
               displayedResults.map((result) => {
                 const isEditing = editingId === result.id;
+                
+                // Pure deterministic computation:
+                // Rule 1: This function is the ONLY place status is ever computed
+                const computedRealStatus = computeStatus(
+                  parseNumericValue(result.value),
+                  result.reference_min,
+                  result.reference_max
+                );
+
                 return (
                   <tr
                     key={result.id}
@@ -204,9 +217,9 @@ export const TestResultTable: React.FC<TestResultTableProps> = ({
                       )}
                     </td>
 
-                    {/* Computed Status (Pure JS) */}
+                    {/* Computed Status (Pure JS computeStatus) */}
                     <td className="py-3.5 px-4">
-                      <StatusBadge status={result.status} size="sm" />
+                      <StatusBadge status={computedRealStatus} size="sm" />
                     </td>
 
                     {/* Confidence & AI Traceability */}

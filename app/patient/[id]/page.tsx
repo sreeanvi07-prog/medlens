@@ -10,12 +10,14 @@ import {
   Calendar,
   Building,
   AlertCircle,
+  Upload,
 } from "lucide-react";
 import { useData } from "@/context/DataContext";
 import { ProvenanceBadge } from "@/components/ProvenanceBadge";
 import { TestResultTable } from "@/components/TestResultTable";
 import { AIAnalysisSummary } from "@/components/AIAnalysisSummary";
 import { SafetyBanner } from "@/components/SafetyBanner";
+import { DocumentUpload } from "@/components/DocumentUpload";
 
 export default function PatientRecordPage() {
   const params = useParams();
@@ -28,6 +30,7 @@ export default function PatientRecordPage() {
   } = useData();
 
   const [selectedDocId, setSelectedDocId] = useState<string>("all");
+  const [showUploadModal, setShowUploadModal] = useState<boolean>(false);
 
   const patient = getPatientById(patientId);
   const documents = getDocumentsByPatientId(patientId);
@@ -108,8 +111,8 @@ export default function PatientRecordPage() {
             </div>
           </div>
 
-          {/* Quick Aggregate Indicators */}
-          <div className="flex items-center gap-3">
+          {/* Quick Aggregate Indicators & Upload Trigger */}
+          <div className="flex flex-wrap items-center gap-3">
             <div className="px-3.5 py-2 rounded-xl bg-slate-800/80 border border-slate-700/80 text-center">
               <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider block">
                 Lab Tests
@@ -142,6 +145,14 @@ export default function PatientRecordPage() {
                 {verifiedResultsCount}
               </span>
             </div>
+
+            <button
+              onClick={() => setShowUploadModal((prev) => !prev)}
+              className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold shadow-md shadow-teal-600/20 transition-all cursor-pointer"
+            >
+              <Upload className="w-4 h-4" />
+              <span>{showUploadModal ? "Hide Upload" : "Upload Document"}</span>
+            </button>
           </div>
         </div>
 
@@ -192,6 +203,17 @@ export default function PatientRecordPage() {
           </div>
         </div>
       </div>
+
+      {/* Document Upload & Extraction Section (Module 2) */}
+      {showUploadModal && (
+        <DocumentUpload
+          patientId={patient.id}
+          patientName={patient.name}
+          onSuccess={() => {
+            // Document commited to record
+          }}
+        />
+      )}
 
       {/* Associated Laboratory Documents */}
       <div className="space-y-3">
@@ -262,7 +284,7 @@ export default function PatientRecordPage() {
         </div>
       </div>
 
-      {/* Lab Results Table with Pure Deterministic Range Engine */}
+      {/* Lab Results Table with Pure Deterministic Range Engine (Module 3 & 4) */}
       <TestResultTable
         results={allResults}
         filterDocumentId={selectedDocId === "all" ? undefined : selectedDocId}

@@ -14,61 +14,63 @@ import { TestResult } from "./types";
  * - Never let the AI invent a reference range.
  */
 
-export function parseNumericValue(valueStr: string): number | null {
-  if (!valueStr || typeof valueStr !== "string") return null;
+export function parseNumericValue(valueStr: string | number | null | undefined): number | null {
+  if (valueStr === null || valueStr === undefined) return null;
+  if (typeof valueStr === "number") {
+    return isNaN(valueStr) || !isFinite(valueStr) ? null : valueStr;
+  }
   
-  // Remove common non-numeric prefix symbols like <, >, <=, >=, ~
+  if (typeof valueStr !== "string") return null;
+  
+  // Clean prefix symbols like <, >, <=, >=, ~
   const cleaned = valueStr.trim().replace(/^[<>~=]\s*/, "");
   const num = parseFloat(cleaned);
   
   return isNaN(num) || !isFinite(num) ? null : num;
 }
 
+/**
+ * Pure function with no AI calls computing status strictly from numeric value and reference bounds
+ */
+export function computeStatus(
+  value: number | null,
+  referenceMin: number | null,
+  referenceMax: number | null
+): "LOW" | "NORMAL" | "HIGH" | "NOT_DETERMINED" {
+  // If value is null, NaN, or not a finite number
+  if (value === null || typeof value !== "number" || isNaN(value) || !isFinite(value)) {
+    return "NOT_DETERMINED";
+  }
+
+  // If both referenceMin and referenceMax are null (no range provided)
+  if (referenceMin === null && referenceMax === null) {
+    return "NOT_DETERMINED";
+  }
+
+  // If value falls below minimum bound
+  if (referenceMin !== null && value < referenceMin) {
+    return "LOW";
+  }
+
+  // If value exceeds maximum bound
+  if (referenceMax !== null && value > referenceMax) {
+    return "HIGH";
+  }
+
+  // Otherwise within reference bounds
+  return "NORMAL";
+}
+
+/**
+ * Helper to compute status directly from string or number values
+ */
 export function computeTestStatus(
-  value: string | number,
+  value: string | number | null,
   reference_min: number | null,
   reference_max: number | null
 ): TestResult["status"] {
-  // If no reference bounds are present, status cannot be determined
-  if (reference_min === null && reference_max === null) {
-    return "NOT_DETERMINED";
-  }
-
-  const numVal = typeof value === "number" ? value : parseNumericValue(value);
-  
-  // If value is non-numeric (e.g., "Negative", "Reactive", "Trace") and no bounds match
-  if (numVal === null) {
-    return "NOT_DETERMINED";
-  }
-
-  // Case 1: Both min and max exist (standard range e.g., 70 - 99 mg/dL)
-  if (reference_min !== null && reference_max !== null) {
-    if (numVal < reference_min) {
-      return "LOW";
-    }
-    if (numVal > reference_max) {
-      return "HIGH";
-    }
-    return "NORMAL";
-  }
-
-  // Case 2: Only minimum exists (e.g., > 50 mg/dL)
-  if (reference_min !== null && reference_max === null) {
-    if (numVal < reference_min) {
-      return "LOW";
-    }
-    return "NORMAL";
-  }
-
-  // Case 3: Only maximum exists (e.g., < 100 mg/dL)
-  if (reference_min === null && reference_max !== null) {
-    if (numVal > reference_max) {
-      return "HIGH";
-    }
-    return "NORMAL";
-  }
-
-  return "NOT_DETERMINED";
+  const numericVal = typeof value === "number" ? value : parseNumericValue(value);
+  return computeStatus(numericVal, reference_min, reference_max);
 }
 
 /**
