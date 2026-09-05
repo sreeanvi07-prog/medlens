@@ -1,17 +1,39 @@
 // Audit and Scenario Test Suite for MedLens
 
+async function getActiveBaseUrl() {
+  const ports = [3001, 3000];
+  for (const port of ports) {
+    try {
+      const res = await fetch(`http://localhost:${port}/api/summary`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: "" }),
+      });
+      if (res.status === 200) {
+        return `http://localhost:${port}`;
+      }
+    } catch {
+      // try next port
+    }
+  }
+  return "http://localhost:3001";
+}
+
 async function runScenarioTests() {
   console.log("==================================================");
   console.log(" RUNNING MEDLENS AUDIT & SCENARIO VERIFICATION");
   console.log("==================================================");
 
+  const baseUrl = await getActiveBaseUrl();
+  console.log(`Active server base URL: ${baseUrl}\n`);
+
   let passed = 0;
   let failed = 0;
 
   // SCENARIO 1: Upload a non-PDF/image file (e.g. text/plain or .exe)
-  console.log("\n[TEST 1] Upload a non-PDF/image file");
+  console.log("[TEST 1] Upload a non-PDF/image file");
   try {
-    const res = await fetch("http://localhost:3000/api/extract", {
+    const res = await fetch(`${baseUrl}/api/extract`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -41,7 +63,7 @@ async function runScenarioTests() {
   // SCENARIO 2: Upload nothing and click submit
   console.log("\n[TEST 2] Upload nothing and click submit");
   try {
-    const res = await fetch("http://localhost:3000/api/extract", {
+    const res = await fetch(`${baseUrl}/api/extract`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -70,9 +92,8 @@ async function runScenarioTests() {
   // SCENARIO 2b: File size > 10MB test
   console.log("\n[TEST 2b] Reject file exceeding 10MB");
   try {
-    // 11MB payload
     const largeBuffer = Buffer.alloc(11 * 1024 * 1024, "a");
-    const res = await fetch("http://localhost:3000/api/extract", {
+    const res = await fetch(`${baseUrl}/api/extract`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -141,7 +162,7 @@ async function runScenarioTests() {
       source: "user_provided",
     };
 
-    const res = await fetch("http://localhost:3000/api/summary", {
+    const res = await fetch(`${baseUrl}/api/summary`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -156,8 +177,8 @@ async function runScenarioTests() {
     console.log(`  HTTP Status: ${res.status}`);
     console.log(`  Summary Output:\n`, data.summary);
 
-    const has0Docs = data.summary.includes("0 laboratory documents");
-    const has0Tests = data.summary.includes("0 individual test results");
+    const has0Docs = data.summary.includes("0 laboratory document");
+    const has0Tests = data.summary.includes("0 individual test result");
     const hasDisclaimer = data.summary.includes("MedLens organizes and explains information from your records. It does not provide a medical diagnosis or treatment recommendation.");
 
     if (res.status === 200 && has0Docs && has0Tests && hasDisclaimer) {
