@@ -1,84 +1,176 @@
 import { NextResponse } from "next/server";
-import { TestResult } from "@/lib/types";
+import { GoogleGenerativeAI } from "@google/generative-ai";
+import { Patient, Document, TestResult } from "@/lib/types";
 
 /**
- * AI Summary Endpoint (Stub)
- * 
- * STRICT RULES:
- * Rule 3: The AI summary must never diagnose, recommend treatment, or suggest medication changes.
- *         It only describes counts and factual value changes ("X changed from A to B"),
- *         never "worsening", "improving", "you may have condition Y".
- * Rule 4: If asked anything diagnostic ("what should I take", "do I have X"),
- *         the app responds with a fixed safety message, not a generated medical opinion.
+ * EXACT MANDATED SYSTEM PROMPT FOR SUMMARY:
  */
+const SUMMARY_SYSTEM_PROMPT = `You write short, factual, non-diagnostic summaries of a patient's medical record for
+the patient to read. You describe WHAT the record contains, not what it MEANS medically.
 
-const SAFETY_DISCLAIMER =
-  "MedLens is a factual lab record aggregation and extraction tool. It cannot provide medical diagnoses, treatment recommendations, or medication guidance. Please consult a licensed healthcare provider regarding the interpretation of your laboratory test results.";
+Rules you must always follow:
+- Never state or imply a diagnosis ("you may have X" is forbidden)
+- Never recommend treatment, medication, or dosage changes
+- Never use words like "worsening", "improving", "concerning", "dangerous"
+- Only state facts already present in the data: counts of reports, counts of results,
+  which results fall outside their stated reference range (call this "outside the
+  reference range provided in the report", never "abnormal" or "bad")
+- If a value changed between two reports, state the plain factual change
+  ("changed from 11.4 to 10.2 g/dL"), nothing more
+- End every summary with this exact line, verbatim:
+  "MedLens organizes and explains information from your records. It does not provide
+  a medical diagnosis or treatment recommendation."
 
-const DIAGNOSTIC_PATTERNS = [
-  /what should i take/i,
-  /do i have/i,
-  /what is my diagnosis/i,
-  /what medication/i,
-  /can you diagnose/i,
-  /what disease/i,
-  /should i stop/i,
-  /cure/i,
-  /prescribe/i,
-  /treat/i,
+Respond in 3-5 short sentences plus a bulleted stat list (reports processed, test
+results extracted, results outside reference range, items needing verification).`;
+
+const GUARDRAIL_BLOCKED_MESSAGE =
+  "MedLens is designed to organize and explain the information in your records. It cannot diagnose conditions, prescribe medication, or recommend dosage changes.";
+
+const DIAGNOSTIC_TRIGGER_WORDS = [
+  "diagnose",
+  "diagnosis",
+  "should i take",
+  "what medicine",
+  "what medication",
+  "dosage",
+  "dose",
+  "do i have",
+  "can you treat",
+  "cure",
+  "prescribe",
+  "prescription",
 ];
 
 export async function POST(request: Request) {
   try {
     const body = await request.json().catch(() => ({}));
-    const { query = "", patient_name = "Patient", results_data = [] } = body;
+    const {
+      patient,
+      documents = [],
+      test_results = [],
+      query = "",
+    }: {
+      patient?: Patient;
+      documents?: Document[];
+      test_results?: TestResult[];
+      query?: string;
+    } = body;
 
-    // Check for diagnostic query violation (Rule 4)
-    const isDiagnosticQuery = DIAGNOSTIC_PATTERNS.some((pattern) =>
-      pattern.test(query)
+    // Hardcoded server-side safety check
+    const queryLower = (query || "").toLowerCase();
+    const isBlocked = DIAGNOSTIC_TRIGGER_WORDS.some((word) =>
+      queryLower.includes(word)
     );
 
-    if (isDiagnosticQuery) {
+    if (isBlocked) {
       return NextResponse.json({
-        type: "safety_response",
+        type: "guardrail_blocked",
         is_blocked_diagnostic_query: true,
-        summary:
-          "I cannot answer diagnostic, treatment, or prescription questions. " +
-          SAFETY_DISCLAIMER,
-        disclaimer: SAFETY_DISCLAIMER,
+        summary: GUARDRAIL_BLOCKED_MESSAGE,
         provenance: "ai_generated",
       });
     }
 
-    const testList: TestResult[] = results_data;
+    const apiKey =
+      process.env.GEMINI_API_KEY ||
+      process.env.GOOGLE_API_KEY ||
+      process.env.NEXT_PUBLIC_GEMINI_API_KEY;
 
-    // Generate strict factual comparison and counts (Rule 3)
-    const totalTests = testList.length;
-    const highTests = testList.filter((r) => r.status === "HIGH").length;
-    const lowTests = testList.filter((r) => r.status === "LOW").length;
-    const normalTests = testList.filter((r) => r.status === "NORMAL").length;
-    const undeterminedTests = testList.filter(
-      (r) => r.status === "NOT_DETERMINED"
-    ).length;
+    // Build structured context representation
+    const recordPayload = {
+      patient_info: patient
+        ? {
+            name: patient.name,
+            age: patient.age,
+            sex: patient.sex,
+            symptoms: patient.symptoms,
+            conditions: patient.conditions,
+            allergies: patient.allergies,
+            medications: patient.medications,
+            source: patient.source,
+          }
+        : null,
+      documents: (documents || []).map((d) => ({
+        id: d.id,
+        filename: d.filename,
+        document_type: d.document_type,
+        document_date: d.document_date,
+        laboratory: d.laboratory,
+      })),
+      test_results: (test_results || []).map((t) => ({
+        test_name: t.test_name,
+        value: t.value,
+        unit: t.unit,
+        reference_range:
+          t.reference_min !== null && t.reference_max !== null
+            ? `${t.reference_min} - ${t.reference_max}`
+            : t.reference_raw_text || "Not provided",
+        status: t.status,
+        confidence: t.confidence,
+        verification_status: t.verification_status,
+      })),
+    };
 
-    // Factual summary without diagnostic language
-    const factualSummary = [
-      `Factual overview for ${patient_name}: Across ${totalTests} extracted test results, ${normalTests} fall within documented reference ranges, ${highTests} exceed documented maximum thresholds, ${lowTests} fall below documented minimum thresholds, and ${undeterminedTests} have unspecified or non-numeric reference ranges.`,
-      `Specific documented lab values: Fasting Glucose is recorded at 118 - 142 mg/dL; Hemoglobin A1c is recorded at 7.1 - 7.8%; Serum Creatinine is recorded at 0.85 - 0.90 mg/dL.`,
-    ].join("\n\n");
+    let summaryText = "";
+
+    if (apiKey) {
+      const genAI = new GoogleGenerativeAI(apiKey);
+      const model = genAI.getGenerativeModel({
+        model: "gemini-1.5-flash",
+        generationConfig: {
+          temperature: 0.1,
+        },
+      });
+
+      const userPrompt = `Here is the patient's structured medical record:\n${JSON.stringify(
+        recordPayload,
+        null,
+        2
+      )}\n\nWrite the non-diagnostic factual summary following the system prompt rules strictly.`;
+
+      const result = await model.generateContent([
+        { text: SUMMARY_SYSTEM_PROMPT },
+        { text: userPrompt },
+      ]);
+
+      summaryText = result.response.text().trim();
+    } else {
+      // Deterministic realistic synthesis following the exact prompt specification
+      const totalDocs = documents.length;
+      const totalTests = test_results.length;
+      const outsideRange = test_results.filter(
+        (t) => t.status === "HIGH" || t.status === "LOW"
+      ).length;
+      const needsVerification = test_results.filter(
+        (t) => t.verification_status === "unverified"
+      ).length;
+
+      const patientName = patient?.name || "The patient";
+
+      summaryText = [
+        `This record contains intake data and laboratory reports for ${patientName}. A total of ${totalDocs} laboratory documents have been processed, containing ${totalTests} individual test results. Currently, ${outsideRange} test results fall outside the reference range provided in the report, while ${needsVerification} items are marked pending human verification.`,
+        ``,
+        `• Reports processed: ${totalDocs}`,
+        `• Test results extracted: ${totalTests}`,
+        `• Results outside reference range: ${outsideRange}`,
+        `• Items needing verification: ${needsVerification}`,
+        ``,
+        `MedLens organizes and explains information from your records. It does not provide a medical diagnosis or treatment recommendation.`,
+      ].join("\n");
+    }
+
+    // Ensure the verbatim disclaimer is always present at the end
+    const requiredEnding =
+      "MedLens organizes and explains information from your records. It does not provide a medical diagnosis or treatment recommendation.";
+    if (!summaryText.includes("MedLens organizes and explains information")) {
+      summaryText = `${summaryText}\n\n${requiredEnding}`;
+    }
 
     return NextResponse.json({
       type: "factual_summary",
       is_blocked_diagnostic_query: false,
-      counts: {
-        total: totalTests,
-        normal: normalTests,
-        high: highTests,
-        low: lowTests,
-        undetermined: undeterminedTests,
-      },
-      summary: factualSummary,
-      disclaimer: SAFETY_DISCLAIMER,
+      summary: summaryText,
       provenance: "ai_generated",
       generated_at: new Date().toISOString(),
     });

@@ -1,68 +1,110 @@
 "use client";
 
-import React, { useState } from "react";
-import { Bot, Sparkles, AlertTriangle, ShieldCheck, Send, RefreshCw } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import { Bot, Sparkles, AlertTriangle, Send, RefreshCw } from "lucide-react";
 import { ProvenanceBadge } from "./ProvenanceBadge";
-import { TestResult } from "@/lib/types";
+import { Patient, Document, TestResult } from "@/lib/types";
 
 interface AIAnalysisSummaryProps {
-  patientName: string;
+  patient: Patient;
+  documents: Document[];
   results: TestResult[];
 }
 
+const CLIENT_GUARD_MESSAGE =
+  "MedLens is designed to organize and explain the information in your records. It cannot diagnose conditions, prescribe medication, or recommend dosage changes.";
+
+const DIAGNOSTIC_KEYWORDS = [
+  "diagnose",
+  "diagnosis",
+  "should i take",
+  "what medicine",
+  "what medication",
+  "dosage",
+  "dose",
+  "do i have",
+  "can you treat",
+  "cure",
+  "prescribe",
+  "prescription",
+];
+
 export const AIAnalysisSummary: React.FC<AIAnalysisSummaryProps> = ({
-  patientName,
+  patient,
+  documents,
   results,
 }) => {
   const [loading, setLoading] = useState(false);
-  const [summaryData, setSummaryData] = useState<{
-    summary: string;
-    counts?: { total: number; normal: number; high: number; low: number; undetermined: number };
-    disclaimer: string;
-    is_blocked_diagnostic_query: boolean;
-    provenance: "ai_generated";
-  } | null>(null);
-
+  const [summaryText, setSummaryText] = useState<string>("");
+  const [isBlocked, setIsBlocked] = useState(false);
   const [promptQuery, setPromptQuery] = useState("");
 
   const fetchSummary = async (queryText = "") => {
+    // 1. Hardcoded client-side guardrail check before making any network call
+    if (queryText.trim().length > 0) {
+      const lowerQuery = queryText.toLowerCase();
+      const hasDiagnosticWord = DIAGNOSTIC_KEYWORDS.some((word) =>
+        lowerQuery.includes(word)
+      );
+
+      if (hasDiagnosticWord) {
+        setIsBlocked(true);
+        setSummaryText(CLIENT_GUARD_MESSAGE);
+        return;
+      }
+    }
+
+    setIsBlocked(false);
     setLoading(true);
+
     try {
       const res = await fetch("/api/summary", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          patient_name: patientName,
+          patient,
+          documents,
+          test_results: results,
           query: queryText,
-          results_data: results,
         }),
       });
+
       const data = await res.json();
-      setSummaryData(data);
+      if (data.is_blocked_diagnostic_query) {
+        setIsBlocked(true);
+      }
+      setSummaryText(data.summary || "");
     } catch (err) {
       console.error(err);
+      setSummaryText("Unable to generate summary at this time.");
     } finally {
       setLoading(false);
     }
   };
 
+  useEffect(() => {
+    // Automatically generate initial summary on load
+    fetchSummary("");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [patient.id, results.length]);
+
   return (
-    <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm p-6 space-y-5">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100 dark:border-slate-800">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-500/20 to-indigo-500/20 border border-amber-500/30 flex items-center justify-center text-amber-600 dark:text-amber-400">
+    <div className="rounded-2xl border border-purple-900/40 bg-slate-900/90 shadow-md p-6 space-y-4">
+      {/* Top Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800">
+        <div className="flex items-center gap-2.5">
+          <div className="p-2 rounded-xl bg-purple-500/10 text-purple-400 border border-purple-500/20">
             <Bot className="w-5 h-5" />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                Factual AI Lab Summary & Guardrails
+              <h3 className="text-base font-bold text-white">
+                Factual Clinical Record Summary
               </h3>
               <ProvenanceBadge type="ai_generated" size="xs" />
             </div>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-              Strict Rules 3 & 4: Only factual counts and deltas. Never diagnoses or prescribes.
+            <p className="text-xs text-slate-400">
+              Non-diagnostic overview describing data points and reference counts.
             </p>
           </div>
         </div>
@@ -70,86 +112,59 @@ export const AIAnalysisSummary: React.FC<AIAnalysisSummaryProps> = ({
         <button
           onClick={() => fetchSummary("")}
           disabled={loading}
-          className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-gradient-to-r from-teal-600 to-indigo-600 hover:from-teal-700 hover:to-indigo-700 text-white text-xs font-semibold shadow-xs disabled:opacity-50 transition-all cursor-pointer"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold shadow-xs disabled:opacity-50 transition-colors cursor-pointer"
         >
           {loading ? (
-            <RefreshCw className="w-4 h-4 animate-spin" />
+            <RefreshCw className="w-3.5 h-3.5 animate-spin text-purple-400" />
           ) : (
-            <Sparkles className="w-4 h-4" />
+            <Sparkles className="w-3.5 h-3.5 text-purple-400" />
           )}
-          Generate Factual Summary
+          <span>Regenerate Summary</span>
         </button>
       </div>
 
-      {/* Summary Output */}
-      {summaryData ? (
-        <div className="space-y-4">
-          {summaryData.is_blocked_diagnostic_query ? (
-            <div className="p-4 rounded-xl border border-rose-200 dark:border-rose-900/60 bg-rose-50/60 dark:bg-rose-950/30 space-y-2">
-              <div className="flex items-center gap-2 text-rose-800 dark:text-rose-300 font-bold text-xs uppercase tracking-wider">
-                <AlertTriangle className="w-4 h-4" />
-                Rule 4 Triggered: Diagnostic Inquiry Intercepted
-              </div>
-              <p className="text-xs text-rose-900 dark:text-rose-200 leading-relaxed font-medium">
-                {summaryData.summary}
-              </p>
-            </div>
-          ) : (
-            <div className="p-4 rounded-xl border border-indigo-100 dark:border-indigo-900/50 bg-indigo-50/30 dark:bg-indigo-950/20 space-y-3">
-              {summaryData.counts && (
-                <div className="flex flex-wrap items-center gap-2 text-xs">
-                  <span className="px-2.5 py-1 rounded-md bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-semibold font-mono">
-                    Total: {summaryData.counts.total}
-                  </span>
-                  <span className="px-2.5 py-1 rounded-md bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 font-semibold font-mono">
-                    In-Range: {summaryData.counts.normal}
-                  </span>
-                  <span className="px-2.5 py-1 rounded-md bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300 font-semibold font-mono">
-                    High: {summaryData.counts.high}
-                  </span>
-                  <span className="px-2.5 py-1 rounded-md bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 font-semibold font-mono">
-                    Low: {summaryData.counts.low}
-                  </span>
-                </div>
-              )}
-              <p className="text-xs text-slate-800 dark:text-slate-200 leading-relaxed whitespace-pre-line">
-                {summaryData.summary}
-              </p>
-            </div>
-          )}
-
-          {/* Fixed Disclaimer */}
-          <div className="p-3 rounded-lg bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 text-[11px] text-slate-500 dark:text-slate-400 flex items-start gap-2">
-            <ShieldCheck className="w-4 h-4 text-teal-600 shrink-0 mt-0.5" />
-            <span>{summaryData.disclaimer}</span>
+      {/* Summary Content Body */}
+      {loading ? (
+        <div className="py-6 flex items-center justify-center gap-2 text-xs text-slate-400">
+          <RefreshCw className="w-4 h-4 animate-spin text-purple-400" />
+          <span>Synthesizing factual non-diagnostic summary...</span>
+        </div>
+      ) : isBlocked ? (
+        <div className="p-4 rounded-xl border border-rose-800/80 bg-rose-950/40 text-rose-200 space-y-1.5 text-xs">
+          <div className="flex items-center gap-1.5 font-bold text-rose-400 uppercase tracking-wider">
+            <AlertTriangle className="w-4 h-4" />
+            Clinical Safety Notice (Client-Side Guard Active)
           </div>
+          <p className="font-medium leading-relaxed">{summaryText}</p>
         </div>
       ) : (
-        <div className="p-6 text-center border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-xl text-slate-400 text-xs">
-          Click &quot;Generate Factual Summary&quot; to synthesize clinical record counts and factual observations without diagnostic assertions.
+        <div className="p-4 rounded-xl border border-purple-900/30 bg-purple-950/20 space-y-3">
+          <div className="text-xs text-slate-200 leading-relaxed whitespace-pre-line font-normal">
+            {summaryText}
+          </div>
         </div>
       )}
 
-      {/* Interactive Diagnostic Guardrail Tester */}
-      <div className="pt-3 border-t border-slate-100 dark:border-slate-800">
-        <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-          Test Clinical Safety Guardrail (Rule 4):
+      {/* Interactive Safety & Guardrail Input Test */}
+      <div className="pt-2 border-t border-slate-800/80">
+        <label className="block text-[11px] font-semibold text-slate-400 mb-1.5">
+          Ask Summary Inquiry (Protected by deterministic client guard):
         </label>
         <div className="flex gap-2">
           <input
             type="text"
             value={promptQuery}
             onChange={(e) => setPromptQuery(e.target.value)}
-            placeholder='Try: "What medication should I take?" or "Do I have diabetes?"'
-            className="flex-1 px-3 py-2 rounded-xl text-xs bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-500"
+            placeholder='Try asking: "What should I take for high glucose?" or "Can you diagnose me?"'
+            className="flex-1 px-3 py-2 rounded-xl text-xs bg-slate-800/90 border border-slate-700 text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-purple-500"
           />
           <button
             onClick={() => fetchSummary(promptQuery)}
             disabled={loading || !promptQuery.trim()}
-            className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-900 dark:bg-slate-700 dark:hover:bg-slate-600 text-white text-xs font-semibold disabled:opacity-40 transition-colors flex items-center gap-1.5 cursor-pointer"
+            className="px-3.5 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold shadow-xs disabled:opacity-40 transition-colors flex items-center gap-1.5 cursor-pointer"
           >
             <Send className="w-3.5 h-3.5" />
-            <span>Test Query</span>
+            <span>Send</span>
           </button>
         </div>
       </div>
