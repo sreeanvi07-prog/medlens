@@ -20,6 +20,7 @@ interface DataContextType {
   getTestResultsByDocumentId: (docId: string) => TestResult[];
   getTestResultsByPatientId: (patientId: string) => TestResult[];
   getConflicts: () => Conflict[];
+  addPatient: (patient: Patient) => void;
   verifyTestResult: (id: string) => void;
   editTestResult: (
     id: string,
@@ -35,7 +36,7 @@ interface DataContextType {
 const DataContext = createContext<DataContextType | undefined>(undefined);
 
 export function DataProvider({ children }: { children: React.ReactNode }) {
-  const [patients] = useState<Patient[]>(MOCK_PATIENTS);
+  const [patients, setPatients] = useState<Patient[]>(MOCK_PATIENTS);
   const [documents, setDocuments] = useState<Document[]>(MOCK_DOCUMENTS);
   const [testResults, setTestResults] = useState<TestResult[]>(MOCK_TEST_RESULTS);
   const [conflicts, setConflicts] = useState<Conflict[]>(MOCK_CONFLICTS);
@@ -56,6 +57,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   };
 
   const getConflicts = () => conflicts;
+
+  const addPatient = (patient: Patient) => {
+    setPatients((prev) => [patient, ...prev]);
+  };
 
   const verifyTestResult = (id: string) => {
     setTestResults((prev) =>
@@ -130,6 +135,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         getTestResultsByDocumentId,
         getTestResultsByPatientId,
         getConflicts,
+        addPatient,
         verifyTestResult,
         editTestResult,
         resolveConflict,

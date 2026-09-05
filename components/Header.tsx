@@ -3,7 +3,7 @@
 import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Activity, ShieldCheck, Database } from "lucide-react";
+import { Activity, ShieldCheck, Database, UserPlus } from "lucide-react";
 
 export const Header: React.FC = () => {
   const pathname = usePathname();
@@ -42,10 +42,28 @@ export const Header: React.FC = () => {
             >
               Dashboard
             </Link>
+            <Link
+              href="/patient/new"
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                pathname === "/patient/new"
+                  ? "bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white"
+                  : "text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-900"
+              }`}
+            >
+              New Intake
+            </Link>
           </nav>
         </div>
 
         <div className="flex items-center gap-3">
+          <Link
+            href="/patient/new"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold shadow-xs transition-colors"
+          >
+            <UserPlus className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">New Intake</span>
+          </Link>
+
           <div className="hidden sm:flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800/80 px-3 py-1.5 rounded-lg border border-slate-200/80 dark:border-slate-700/80">
             <ShieldCheck className="w-4 h-4 text-teal-600 dark:text-teal-400" />
             <span className="font-medium">Deterministic Engine Active</span>

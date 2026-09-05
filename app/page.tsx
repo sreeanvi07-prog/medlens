@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import Link from "next/link";
 import {
   Users,
   FileText,
@@ -8,6 +9,7 @@ import {
   ShieldCheck,
   Cpu,
   CheckCircle2,
+  UserPlus,
 } from "lucide-react";
 import { useData } from "@/context/DataContext";
 import { PatientCard } from "@/components/PatientCard";
@@ -45,15 +47,25 @@ export default function DashboardPage() {
           </p>
         </div>
 
-        {/* Provenance Key / Legend */}
-        <div className="flex flex-wrap items-center gap-2 p-2 rounded-xl bg-slate-800/80 border border-slate-700/60 text-xs">
-          <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-1">
-            Provenance:
-          </span>
-          <ProvenanceBadge type="user_provided" size="xs" />
-          <ProvenanceBadge type="document_extracted" size="xs" />
-          <ProvenanceBadge type="ai_generated" size="xs" />
-          <ProvenanceBadge type="verified" size="xs" />
+        {/* Provenance Key / Legend & New Intake Action */}
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 p-2 rounded-xl bg-slate-800/80 border border-slate-700/60 text-xs">
+            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-1">
+              Provenance:
+            </span>
+            <ProvenanceBadge type="user_provided" size="xs" />
+            <ProvenanceBadge type="document_extracted" size="xs" />
+            <ProvenanceBadge type="ai_generated" size="xs" />
+            <ProvenanceBadge type="verified" size="xs" />
+          </div>
+
+          <Link
+            href="/patient/new"
+            className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold shadow-md shadow-teal-600/20 transition-all"
+          >
+            <UserPlus className="w-4 h-4" />
+            <span>New Intake</span>
+          </Link>
         </div>
       </div>
 
@@ -128,6 +140,14 @@ export default function DashboardPage() {
               Select a patient record to view comprehensive clinical intake, lab tables, and verification actions.
             </p>
           </div>
+
+          <Link
+            href="/patient/new"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-teal-400 text-xs font-semibold border border-slate-700 transition-colors"
+          >
+            <UserPlus className="w-3.5 h-3.5" />
+            <span>+ Add Patient</span>
+          </Link>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
